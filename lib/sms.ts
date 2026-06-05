@@ -52,8 +52,14 @@ export async function sendSms(
     return { to: "", sid: null, skipped: true, reason: "invalid_phone" };
   }
 
-  const result = await twilioSendSms(e164, message);
-  const sid = (result as { sid?: string } | null)?.sid ?? null;
+  let sid: string | null = null;
+  try {
+    const result = await twilioSendSms(e164, message);
+    sid = (result as { sid?: string } | null)?.sid ?? null;
+  } catch (err) {
+    console.error("[sms] send failed:", { to: e164, err });
+    return { to: e164, sid: null, skipped: true, reason: "send_failed" };
+  }
 
   if (options.log !== false) {
     try {
@@ -68,8 +74,8 @@ export async function sendSms(
         sent_at: new Date().toISOString(),
         metadata: { to: e164 },
       });
-    } catch {
-      // Notification logging is best-effort; never fail the send because of it.
+    } catch (err) {
+      console.error("[sms] notification log failed:", { to: e164, err });
     }
   }
 
