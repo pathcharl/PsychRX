@@ -1,0 +1,19 @@
+-- ============================================================================
+-- PsychRx — Incremental migrations (safe to re-run)
+-- ============================================================================
+-- Your base schema is already applied if you see "providers already exists".
+-- Do NOT run schema.sql again.
+--
+-- Run the files below in the Supabase SQL editor, in order, skipping any you
+-- have already run successfully:
+--
+--   1. database/auth.sql
+--   2. database/sms.sql
+--   3. database/voice_fax.sql
+--   4. database/matching.sql
+--   5. database/payments.sql
+--   6. database/onboarding_availability.sql   ← most recent onboarding/availability
+--   7. database/core_spec.sql                 ← product spec (referrals, outreach, etc.)
+--
+-- Each file uses CREATE TABLE IF NOT EXISTS and ADD COLUMN IF NOT EXISTS.
+-- ============================================================================
