@@ -3,6 +3,7 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner";
 import { dmSans, playfairDisplay } from "@/lib/fonts";
+import { AuthHashHandler } from "@/components/auth/auth-hash-handler";
 
 export const metadata: Metadata = {
   title: "PsychRx — Mental Health Care Matched to You",
@@ -25,6 +26,7 @@ export default function RootLayout({
         suppressHydrationWarning
         className="min-h-screen bg-psych-bg text-psych-text antialiased"
       >
+        <AuthHashHandler />
         {children}
         <Toaster />
       </body>

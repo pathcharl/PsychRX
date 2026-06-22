@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -25,6 +25,27 @@ function SetPasswordForm() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function ensureSession() {
+      const { data } = await supabase.auth.getSession();
+      if (!cancelled) setSessionReady(Boolean(data.session));
+    }
+    void ensureSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
+
+  if (!sessionReady) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-navy-900 p-8">
+        <Loader2 className="size-8 animate-spin text-teal-600" />
+      </main>
+    );
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
