@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner";
+import { dmSans, playfairDisplay } from "@/lib/fonts";
 
 export const metadata: Metadata = {
-  title: "PsychRx",
-  description: "PsychRx",
+  title: "PsychRx — Mental Health Care Matched to You",
+  description:
+    "Board-certified therapists and psychiatric providers in Southwest Florida. Major insurance accepted. Sessions available this week.",
 };
 
 export default function RootLayout({
@@ -14,8 +16,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={cn("font-sans")}>
-      <body className="antialiased">
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={cn(dmSans.variable, playfairDisplay.variable, "font-sans")}
+    >
+      <body
+        suppressHydrationWarning
+        className="min-h-screen bg-psych-bg text-psych-text antialiased"
+      >
         {children}
         <Toaster />
       </body>

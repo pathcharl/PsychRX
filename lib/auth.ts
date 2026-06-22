@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import type { Session, User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
@@ -17,11 +18,11 @@ export async function getSession(): Promise<Session | null> {
 }
 
 /** Get the current user, validated against the Supabase Auth server. */
-export async function getUser(): Promise<User | null> {
+export const getUser = cache(async (): Promise<User | null> => {
   const supabase = createClient();
   const { data } = await supabase.auth.getUser();
   return data.user;
-}
+});
 
 /** Get the current user's role (or null). */
 export async function getCurrentRole(): Promise<UserRole | null> {

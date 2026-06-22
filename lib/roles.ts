@@ -18,9 +18,9 @@ export function getUserRole(user: User | null | undefined): UserRole | null {
 export function dashboardPathForRole(role: UserRole | null): string {
   switch (role) {
     case "patient":
-      return "/patient/dashboard";
+      return "/patient-portal/dashboard";
     case "provider":
-      return "/provider/dashboard";
+      return "/portal/dashboard";
     case "admin":
       return "/admin/dashboard";
     default:

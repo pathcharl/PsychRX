@@ -27,7 +27,14 @@ interface CheckResult {
   ms: number;
 }
 
-async function count(table: string, filter?: (q: ReturnType<typeof supabaseAdmin.from>) => ReturnType<typeof supabaseAdmin.from>): Promise<number | null> {
+type SelectQuery = ReturnType<
+  ReturnType<typeof supabaseAdmin.from>["select"]
+>;
+
+async function count(
+  table: string,
+  filter?: (q: SelectQuery) => SelectQuery
+): Promise<number | null> {
   let q = supabaseAdmin.from(table).select("id", { count: "exact", head: true });
   if (filter) q = filter(q);
   const { count, error } = await q;

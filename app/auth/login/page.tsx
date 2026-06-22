@@ -26,7 +26,21 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const authError = searchParams.get("error");
+  const rawError = searchParams.get("error");
+  const authError = rawError
+    ? ({
+        profile:
+          "Your account is verified, but your profile is still being set up. Sign in below to continue.",
+        inactive:
+          "Your provider account is not active yet. Contact PsychRx if you believe this is a mistake.",
+        "fetch failed":
+          "Could not reach PsychRx servers. Check your internet connection and try again.",
+        "Email link is invalid or has expired":
+          "That verification link has expired or was already used. Sign in if you already verified, or sign up again for a new link.",
+        "invalid flow state, flow state has expired":
+          "That verification link expired or was opened in a different browser. Sign up again and click the new link in the same browser.",
+      }[rawError] ?? decodeURIComponent(rawError.replace(/\+/g, " ")))
+    : null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
