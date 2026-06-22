@@ -371,7 +371,7 @@ function resolveSubmissionId(
   const fromField =
     asString(data.submission_id) ??
     asString(submission?.id) ??
-    asString(data.metadata?.submission_id);
+    asString(asRecord(data.metadata)?.submission_id);
 
   if (fromField) return fromField;
 
@@ -571,7 +571,10 @@ export async function handleDocusealWebhook(req: NextRequest) {
 
   const submissionId = resolveSubmissionId(eventType, data);
   const submitterEmail = resolveSubmitterEmail(data);
-  const completedAt = resolveCompletedAt(data, asString(root.timestamp));
+  const completedAt = resolveCompletedAt(
+    data,
+    asString(root.timestamp) ?? undefined
+  );
   const documentUrl = resolveDocumentUrl(data);
   const metadata = pickMetadata(data, asRecord(data.submission));
   const contractId = asString(metadata.contract_id);

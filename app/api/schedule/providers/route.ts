@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
   const serviceType = new URL(req.url).searchParams.get("service_type") ?? "";
   const allowedTypes = SERVICE_PROVIDER_TYPES[serviceType];
 
-  let providerQuery = supabaseAdmin
+  const providerQuery = supabaseAdmin
     .from("providers")
     .select("id, first_name, last_name, credentials, provider_type")
     .eq("status", "active")
