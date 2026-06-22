@@ -46,7 +46,7 @@ async function main() {
   let created = 0;
   let existing = 0;
 
-  for (const [id, meta] of byPatient) {
+  for (const [id, meta] of Array.from(byPatient.entries())) {
     const { data: found } = await supabaseAdmin
       .from("patients")
       .select("id")

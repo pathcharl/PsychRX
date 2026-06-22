@@ -2,10 +2,17 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { getUserRole, dashboardPathForRole, type UserRole } from "@/lib/roles";
 
-const PROTECTED: { prefix: string; role: UserRole }[] = [
-  { prefix: "/patient", role: "patient" },
+const PROTECTED: { prefix: string; role: UserRole; loginPath?: string }[] = [
+  { prefix: "/patient-portal", role: "patient", loginPath: "/patient-portal/login" },
+  { prefix: "/patient", role: "patient", loginPath: "/patient-portal/login" },
+  { prefix: "/portal", role: "provider", loginPath: "/auth/login" },
   { prefix: "/provider", role: "provider" },
   { prefix: "/admin", role: "admin" },
+];
+
+const PUBLIC_PATIENT_PORTAL_PATHS = [
+  "/patient-portal/login",
+  "/patient-portal/set-password",
 ];
 
 type CookieToSet = { name: string; value: string; options?: CookieOptions };
@@ -113,8 +120,35 @@ export async function middleware(req: NextRequest) {
     (p) => path === p.prefix || path.startsWith(`${p.prefix}/`)
   );
   if (match) {
+    if (
+      match.prefix === "/patient-portal" &&
+      PUBLIC_PATIENT_PORTAL_PATHS.some((p) => path === p || path.startsWith(`${p}/`))
+    ) {
+      if (
+        user &&
+        role === "patient" &&
+        path === "/patient-portal/login" &&
+        req.nextUrl.searchParams.get("error") !== "profile"
+      ) {
+        return applyCookies(
+          NextResponse.redirect(new URL("/patient-portal/dashboard", req.url)),
+          pendingCookies
+        );
+      }
+      return applyCookies(withPathHeader(res, path), pendingCookies);
+    }
+
     if (!user) {
-      const loginUrl = new URL("/auth/login", req.url);
+      // Session may still be hydrating — let the client auth gate resolve it.
+      const hasAuthCookie = req.cookies
+        .getAll()
+        .some((c) => c.name.includes("auth-token"));
+      if (match.prefix === "/patient-portal" && hasAuthCookie) {
+        return applyCookies(withPathHeader(res, path), pendingCookies);
+      }
+
+      const loginPath = match.loginPath ?? "/auth/login";
+      const loginUrl = new URL(loginPath, req.url);
       loginUrl.searchParams.set("redirect", path);
       return applyCookies(NextResponse.redirect(loginUrl), pendingCookies);
     }
@@ -126,7 +160,12 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  return res;
+  return applyCookies(withPathHeader(res, path), pendingCookies);
+}
+
+function withPathHeader(response: NextResponse, path: string): NextResponse {
+  response.headers.set("x-pathname", path);
+  return response;
 }
 
 export const config = {

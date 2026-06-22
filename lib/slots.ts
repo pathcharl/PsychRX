@@ -190,7 +190,6 @@ export async function generateSlotsForProvider(
   }> = [];
 
   let skippedBlocked = 0;
-  let skippedDow = 0;
   let skippedExisting = 0;
   let matchedTemplateDays = 0;
 
@@ -203,7 +202,6 @@ export async function generateSlotsForProvider(
 
     for (const tmpl of templates as TemplateRow[]) {
       if (tmpl.day_of_week !== day) {
-        skippedDow += 1;
         continue;
       }
       matchedTemplateDays += 1;

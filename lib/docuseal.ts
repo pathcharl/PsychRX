@@ -3,10 +3,10 @@
 // API docs: https://www.docuseal.com/docs/api
 // ============================================================================
 import { type NextRequest } from "next/server";
-import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase";
 import { ok, fail } from "@/lib/api";
 import { APP_URL } from "@/lib/constants";
+import { activateProviderPortalAfterContract } from "@/lib/provider-portal/activation";
 
 const API_BASE = process.env.DOCUSEAL_API_URL ?? "https://api.docuseal.com";
 const TOKEN = process.env.DOCUSEAL_TOKEN ?? "";
@@ -16,6 +16,7 @@ export interface DocuSealSubmitter {
   role?: string;
   name?: string;
   phone?: string;
+  external_id?: string;
   fields?: Array<{ name: string; default_value?: string }>;
 }
 
@@ -97,6 +98,7 @@ async function createSubmission(input: CreateSubmissionInput): Promise<DocuSealS
         name: s.name,
         phone: s.phone,
         fields: s.fields,
+        external_id: (s as DocuSealSubmitter & { external_id?: string }).external_id,
       })),
       metadata: input.metadata,
     }),
@@ -205,6 +207,7 @@ export async function sendProviderContract(
         role: "Contracting Party",
         name: providerName(enriched),
         phone: enriched.phone ?? undefined,
+        external_id: provider.id,
         fields: buildIcaSubmitterFields(enriched),
       },
     ],
@@ -219,6 +222,11 @@ export async function sendProviderContract(
     .from("contracts")
     .update({ docuseal_submission_id: String(submission.id) })
     .eq("id", contract.id);
+
+  await supabaseAdmin
+    .from("providers")
+    .update({ docuseal_submission_id: String(submission.id) })
+    .eq("id", provider.id);
 
   return { submission, contractId: contract.id };
 }
@@ -324,46 +332,217 @@ export function signingUrl(submission: DocuSealSubmission): string | null {
 // Webhook handler (used by /api/webhooks/docuseal and /api/contracts/sign-webhook)
 // ---------------------------------------------------------------------------
 
-const docusealEventSchema = z.object({
-  event_type: z.string(),
-  timestamp: z.string().optional(),
-  data: z
-    .object({
-      id: z.union([z.string(), z.number()]).optional(),
-      submission_id: z.union([z.string(), z.number()]).optional(),
-      email: z.string().optional(),
-      completed_at: z.string().optional(),
-      status: z.string().optional(),
-      audit_log_url: z.string().url().optional(),
-      submitters: z
-        .array(
-          z.object({
-            email: z.string().optional(),
-            completed_at: z.string().optional(),
-          })
-        )
-        .optional(),
-      documents: z
-        .array(z.object({ name: z.string().optional(), url: z.string().optional() }))
-        .optional(),
-      metadata: z.record(z.string(), z.unknown()).optional(),
-    })
-    .passthrough(),
-});
+const LOG_PREFIX = "[docuseal/webhook]";
 
+const COMPLETION_EVENTS = new Set([
+  "form.completed",
+  "submission.completed",
+]);
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asString(value: unknown): string | null {
+  if (value == null) return null;
+  const str = String(value).trim();
+  return str.length ? str : null;
+}
+
+function pickMetadata(
+  ...sources: Array<Record<string, unknown> | null | undefined>
+): Record<string, unknown> {
+  for (const src of sources) {
+    const meta = asRecord(src?.metadata);
+    if (meta && Object.keys(meta).length > 0) return meta;
+  }
+  return {};
+}
+
+/** DocuSeal form.completed uses data.id for submitter id — not submission id. */
+function resolveSubmissionId(
+  eventType: string,
+  data: Record<string, unknown>
+): string | null {
+  const submission = asRecord(data.submission);
+
+  const fromField =
+    asString(data.submission_id) ??
+    asString(submission?.id) ??
+    asString(data.metadata?.submission_id);
+
+  if (fromField) return fromField;
+
+  if (eventType === "submission.completed") {
+    return asString(data.id);
+  }
+
+  const submitters = Array.isArray(data.submitters) ? data.submitters : [];
+  const first = asRecord(submitters[0]);
+  return asString(first?.submission_id);
+}
+
+function resolveSubmitterEmail(data: Record<string, unknown>): string | null {
+  const direct = asString(data.email);
+  if (direct) return direct;
+
+  const submitters = Array.isArray(data.submitters) ? data.submitters : [];
+  for (const item of submitters) {
+    const email = asString(asRecord(item)?.email);
+    if (email) return email;
+  }
+  return null;
+}
+
+function resolveCompletedAt(
+  data: Record<string, unknown>,
+  fallback?: string
+): string {
+  const submitters = Array.isArray(data.submitters) ? data.submitters : [];
+  const first = asRecord(submitters[0]);
+  return (
+    asString(data.completed_at) ??
+    asString(first?.completed_at) ??
+    fallback ??
+    new Date().toISOString()
+  );
+}
+
+function resolveDocumentUrl(data: Record<string, unknown>): string | null {
+  const docs = Array.isArray(data.documents) ? data.documents : [];
+  const firstDoc = asRecord(docs[0]);
+  return (
+    asString(firstDoc?.url) ??
+    asString(data.audit_log_url) ??
+    asString(asRecord(data.submission)?.audit_log_url) ??
+    asString(data.combined_document_url)
+  );
+}
+
+function resolveExternalProviderId(data: Record<string, unknown>): string | null {
+  return (
+    asString(data.external_id) ??
+    asString(data.application_key) ??
+    asString(
+      asRecord(
+        Array.isArray(data.submitters) ? asRecord(data.submitters[0]) : null
+      )?.external_id
+    )
+  );
+}
+
+/**
+ * DocuSeal Cloud webhooks are unsigned by default.
+ * Only enforce auth when DOCUSEAL_WEBHOOK_SECRET is explicitly set.
+ */
 function isAuthorized(req: NextRequest): boolean {
-  const secret = process.env.DOCUSEAL_TOKEN;
-  if (!secret) return true;
+  const webhookSecret = process.env.DOCUSEAL_WEBHOOK_SECRET;
+  if (!webhookSecret) return true;
+
   const provided =
     req.headers.get("x-docuseal-signature") ??
     req.headers.get("x-docuseal-token") ??
+    req.nextUrl.searchParams.get("secret") ??
     "";
-  return provided === secret;
+
+  return provided === webhookSecret;
+}
+
+async function findContract(params: {
+  contractId: string | null;
+  submissionId: string | null;
+}) {
+  if (params.contractId) {
+    const { data } = await supabaseAdmin
+      .from("contracts")
+      .select("id, provider_id, docuseal_submission_id")
+      .eq("id", params.contractId)
+      .maybeSingle();
+    if (data) return data;
+  }
+
+  if (params.submissionId) {
+    const { data } = await supabaseAdmin
+      .from("contracts")
+      .select("id, provider_id, docuseal_submission_id")
+      .eq("docuseal_submission_id", params.submissionId)
+      .maybeSingle();
+    if (data) return data;
+  }
+
+  return null;
+}
+
+async function findProviderId(params: {
+  providerIdFromMeta: string | null;
+  externalProviderId: string | null;
+  submissionId: string | null;
+  submitterEmail: string | null;
+  contractProviderId: string | null;
+}): Promise<string | null> {
+  const candidates = [
+    params.contractProviderId,
+    params.providerIdFromMeta,
+    params.externalProviderId,
+  ].filter(Boolean) as string[];
+
+  for (const id of candidates) {
+    const { data } = await supabaseAdmin
+      .from("providers")
+      .select("id")
+      .eq("id", id)
+      .maybeSingle();
+    if (data?.id) {
+      console.log(`${LOG_PREFIX} matched provider by id:`, data.id);
+      return data.id as string;
+    }
+  }
+
+  if (params.submissionId) {
+    const { data } = await supabaseAdmin
+      .from("providers")
+      .select("id, email")
+      .eq("docuseal_submission_id", params.submissionId)
+      .maybeSingle();
+    if (data?.id) {
+      console.log(
+        `${LOG_PREFIX} matched provider by docuseal_submission_id:`,
+        data.id,
+        data.email
+      );
+      return data.id as string;
+    }
+  }
+
+  if (params.submitterEmail) {
+    const { data } = await supabaseAdmin
+      .from("providers")
+      .select("id, email")
+      .ilike("email", params.submitterEmail)
+      .maybeSingle();
+    if (data?.id) {
+      console.log(
+        `${LOG_PREFIX} matched provider by email:`,
+        data.email,
+        "→",
+        data.id
+      );
+      return data.id as string;
+    }
+  }
+
+  console.log(`${LOG_PREFIX} no provider match`, params);
+  return null;
 }
 
 /** Process DocuSeal webhook events (form.completed / submission.completed). */
 export async function handleDocusealWebhook(req: NextRequest) {
-  if (!isAuthorized(req)) return fail("Unauthorized", 401);
+  if (!isAuthorized(req)) {
+    console.warn(`${LOG_PREFIX} rejected — invalid webhook secret`);
+    return fail("Unauthorized", 401);
+  }
 
   let body: unknown;
   try {
@@ -372,103 +551,146 @@ export async function handleDocusealWebhook(req: NextRequest) {
     return fail("Invalid JSON body", 400);
   }
 
-  const parsed = docusealEventSchema.safeParse(body);
-  if (!parsed.success) {
-    return fail("Invalid webhook payload", 422, parsed.error.flatten());
+  console.log(`${LOG_PREFIX} raw payload:`, JSON.stringify(body, null, 2));
+
+  const root = asRecord(body);
+  if (!root) return fail("Invalid webhook payload", 422);
+
+  const eventType = asString(root.event_type);
+  if (!eventType) return fail("Missing event_type", 422);
+
+  console.log(`${LOG_PREFIX} event_type:`, eventType);
+
+  if (!COMPLETION_EVENTS.has(eventType)) {
+    console.log(`${LOG_PREFIX} ignored event:`, eventType);
+    return ok({ received: true, ignored: eventType });
   }
 
-  const { event_type, data } = parsed.data;
+  const data = asRecord(root.data);
+  if (!data) return fail("Missing data object", 422);
 
-  if (event_type !== "form.completed" && event_type !== "submission.completed") {
-    return ok({ received: true, ignored: event_type });
+  const submissionId = resolveSubmissionId(eventType, data);
+  const submitterEmail = resolveSubmitterEmail(data);
+  const completedAt = resolveCompletedAt(data, asString(root.timestamp));
+  const documentUrl = resolveDocumentUrl(data);
+  const metadata = pickMetadata(data, asRecord(data.submission));
+  const contractId = asString(metadata.contract_id);
+  const providerIdFromMeta = asString(metadata.provider_id);
+  const externalProviderId = resolveExternalProviderId(data);
+
+  console.log(`${LOG_PREFIX} parsed fields:`, {
+    submissionId,
+    submitterEmail,
+    completedAt,
+    contractId,
+    providerIdFromMeta,
+    externalProviderId,
+    documentUrl,
+    dataId: data.id,
+    dataSubmissionId: data.submission_id,
+  });
+
+  if (!submissionId && !contractId && !submitterEmail && !externalProviderId) {
+    return ok({
+      received: true,
+      linked: false,
+      reason: "missing_identifiers",
+    });
   }
 
-  const submissionId = String(
-    data.submission_id ?? data.id ?? data.metadata?.submission_id ?? ""
-  );
-  const submitterEmail =
-    data.email ?? data.submitters?.[0]?.email ?? null;
-  const completedAt =
-    data.completed_at ??
-    data.submitters?.[0]?.completed_at ??
-    parsed.data.timestamp ??
-    new Date().toISOString();
-  const documentUrl = data.documents?.[0]?.url ?? data.audit_log_url ?? null;
+  const existingContract = await findContract({
+    contractId,
+    submissionId,
+  });
 
-  const contractId =
-    typeof data.metadata?.contract_id === "string"
-      ? data.metadata.contract_id
-      : null;
-
-  let contractQuery = supabaseAdmin.from("contracts").select("id, provider_id");
-
-  if (contractId) {
-    contractQuery = contractQuery.eq("id", contractId);
-  } else if (submissionId) {
-    contractQuery = contractQuery.eq("docuseal_submission_id", submissionId);
-  } else {
-    return ok({ received: true, linked: false, reason: "missing_submission_id" });
-  }
-
-  const { data: existingContract } = await contractQuery.maybeSingle();
+  console.log(`${LOG_PREFIX} contract lookup:`, existingContract ?? "not found");
 
   const contractUpdate = {
     status: "signed",
     signed_at: completedAt,
-    docuseal_submission_id: submissionId || null,
-    ...(documentUrl ? { signed_pdf_url: documentUrl, document_url: documentUrl } : {}),
+    ...(submissionId ? { docuseal_submission_id: submissionId } : {}),
+    ...(documentUrl
+      ? { signed_pdf_url: documentUrl, document_url: documentUrl }
+      : {}),
   };
-
-  let providerId = existingContract?.provider_id ?? null;
 
   if (existingContract?.id) {
     const { error } = await supabaseAdmin
       .from("contracts")
       .update(contractUpdate)
       .eq("id", existingContract.id);
-    if (error) return fail(error.message, 500);
+    if (error) {
+      console.error(`${LOG_PREFIX} contract update failed:`, error.message);
+      return fail(error.message, 500);
+    }
+    console.log(`${LOG_PREFIX} updated contract:`, existingContract.id);
   } else if (contractId) {
     const { error } = await supabaseAdmin
       .from("contracts")
       .update(contractUpdate)
       .eq("id", contractId);
-    if (error) return fail(error.message, 500);
-    const { data: c } = await supabaseAdmin
-      .from("contracts")
-      .select("provider_id")
-      .eq("id", contractId)
-      .maybeSingle();
-    providerId = c?.provider_id ?? null;
+    if (error) {
+      console.error(`${LOG_PREFIX} contract update by id failed:`, error.message);
+    }
   }
 
+  const providerId = await findProviderId({
+    providerIdFromMeta,
+    externalProviderId,
+    submissionId,
+    submitterEmail,
+    contractProviderId: existingContract?.provider_id ?? null,
+  });
+
+  let providerActivated = {
+    accountCreated: false,
+    emailSent: false,
+  };
+
   if (providerId) {
-    const { error: providerErr } = await supabaseAdmin
+    const { data: providerRow, error: providerErr } = await supabaseAdmin
       .from("providers")
       .update({
         contract_signed: true,
         contract_signed_at: completedAt,
-        docuseal_submission_id: submissionId || null,
+        ...(submissionId ? { docuseal_submission_id: submissionId } : {}),
         onboarding_step: "contract_signed",
       })
-      .eq("id", providerId);
-    if (providerErr) return fail(providerErr.message, 500);
-  } else if (submitterEmail) {
-    await supabaseAdmin
-      .from("providers")
-      .update({
-        contract_signed: true,
-        contract_signed_at: completedAt,
-        docuseal_submission_id: submissionId || null,
-      })
-      .eq("email", submitterEmail);
+      .eq("id", providerId)
+      .select("id, email, first_name, last_name, contract_signed")
+      .maybeSingle();
+
+    if (providerErr) {
+      console.error(`${LOG_PREFIX} provider update failed:`, providerErr.message);
+      return fail(providerErr.message, 500);
+    }
+
+    console.log(`${LOG_PREFIX} updated provider:`, providerRow);
+
+    if (providerRow?.email) {
+      providerActivated = await activateProviderPortalAfterContract({
+        providerId: providerRow.id as string,
+        email: providerRow.email as string,
+        firstName: (providerRow.first_name as string) ?? "",
+        lastName: (providerRow.last_name as string) ?? "",
+      });
+      console.log(`${LOG_PREFIX} portal activation:`, providerActivated);
+    }
+  } else {
+    console.warn(
+      `${LOG_PREFIX} could not resolve provider — contract_signed not updated`
+    );
   }
 
   return ok({
     received: true,
-    linked: true,
+    linked: Boolean(providerId),
+    event_type: eventType,
     submission_id: submissionId,
     submitter_email: submitterEmail,
     completed_at: completedAt,
     provider_id: providerId,
+    contract_id: existingContract?.id ?? contractId,
+    portal: providerActivated,
   });
 }
