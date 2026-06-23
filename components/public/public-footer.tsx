@@ -7,6 +7,8 @@ const footerLinks = [
   { href: "/refer", label: "Refer a Patient" },
   { href: "/providers/join", label: "For Providers" },
   { href: "/providers/apply", label: "Provider Application" },
+  { href: "/privacy", label: "Privacy Policy" },
+  { href: "/terms", label: "Terms & Conditions" },
 ];
 
 export function PublicFooter({ footerNote }: { footerNote?: string }) {
