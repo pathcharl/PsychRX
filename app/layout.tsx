@@ -8,7 +8,7 @@ import { AuthHashHandler } from "@/components/auth/auth-hash-handler";
 export const metadata: Metadata = {
   title: "PsychRx — Mental Health Care Matched to You",
   description:
-    "Board-certified therapists and psychiatric providers in Southwest Florida. Major insurance accepted. Sessions available this week.",
+    "Board-certified therapists and psychiatric providers. Major insurance accepted. Sessions available this week.",
 };
 
 export default function RootLayout({

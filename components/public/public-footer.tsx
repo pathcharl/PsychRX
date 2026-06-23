@@ -19,7 +19,7 @@ export function PublicFooter({ footerNote }: { footerNote?: string }) {
           <div className="space-y-3">
             <Logo variant="light" />
             <p className="text-sm text-white/70">
-              Mental health care matched to you — Southwest Florida.
+              Mental health care matched to you.
             </p>
             <a
               href="tel:18337792479"

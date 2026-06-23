@@ -24,7 +24,7 @@ export function HeroSection() {
             className="gap-2 border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-800"
           >
             <span className="size-2 animate-pulse rounded-full bg-emerald-500" />
-            Available this week · Southwest Florida
+            Available this week
           </Badge>
 
           <h1 className="font-heading text-4xl font-bold leading-tight tracking-tight text-navy sm:text-5xl lg:text-6xl">
