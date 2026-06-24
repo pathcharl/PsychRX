@@ -1,8 +1,0 @@
-[build]
-builder = "dockerfile"
-dockerfilePath = "Dockerfile"
-
-[deploy]
-startCommand = "npx tsx start.ts"
-restartPolicyType = "always"
-healthcheckPath = "/"
