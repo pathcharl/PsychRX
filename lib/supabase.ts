@@ -1,5 +1,17 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+// Node runtimes (Railway workers) before Node 21/22 have no global WebSocket,
+// which Supabase Realtime needs. Polyfill it on the server only — never in the
+// browser, where a global WebSocket already exists and bundling `ws` would break.
+if (
+  typeof window === "undefined" &&
+  typeof (globalThis as { WebSocket?: unknown }).WebSocket === "undefined"
+) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+  const ws = require("ws");
+  (globalThis as { WebSocket?: unknown }).WebSocket = ws;
+}
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY ?? "";
