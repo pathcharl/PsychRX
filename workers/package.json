@@ -1,16 +1,20 @@
 {
   "name": "psychrx-workers",
   "version": "1.0.0",
+  "main": "index.ts",
   "scripts": {
+    "build": "echo 'no build needed'",
     "start": "npx tsx index.ts"
   },
   "dependencies": {
-    "tsx": "latest",
-    "node-cron": "latest",
-    "@supabase/supabase-js": "latest",
-    "twilio": "latest",
-    "stripe": "latest",
-    "resend": "latest",
-    "@anthropic-ai/sdk": "latest"
+    "tsx": "^4.0.0",
+    "node-cron": "^3.0.0",
+    "@supabase/supabase-js": "^2.0.0",
+    "twilio": "^5.0.0",
+    "stripe": "^14.0.0",
+    "resend": "^3.0.0",
+    "@anthropic-ai/sdk": "^0.20.0",
+    "date-fns": "^3.0.0",
+    "zod": "^3.0.0"
   }
 }
