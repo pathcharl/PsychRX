@@ -1,7 +1,9 @@
 {
   "name": "psychrx-workers",
   "version": "1.0.0",
-  "main": "index.ts",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "build": "echo 'no build needed'",
     "start": "npx tsx index.ts"
