@@ -1,0 +1,16 @@
+{
+  "name": "psychrx-workers",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "npx tsx index.ts"
+  },
+  "dependencies": {
+    "tsx": "latest",
+    "node-cron": "latest",
+    "@supabase/supabase-js": "latest",
+    "twilio": "latest",
+    "stripe": "latest",
+    "resend": "latest",
+    "@anthropic-ai/sdk": "latest"
+  }
+}
