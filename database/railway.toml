@@ -1,0 +1,8 @@
+[build]
+builder = "nixpacks"
+buildCommand = "npm install --production=false"
+
+[deploy]
+startCommand = "npx tsx workers/index.ts"
+restartPolicyType = "always"
+healthcheckPath = "/api/health"
