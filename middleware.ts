@@ -107,7 +107,16 @@ export async function middleware(req: NextRequest) {
   const role = getUserRole(user);
 
   if (path.startsWith("/auth")) {
-    if (user && role && (path === "/auth/login" || path === "/auth/signup")) {
+    // Don't bounce a logged-in user off /auth/login when an error is being
+    // surfaced (e.g. ?error=inactive). Otherwise the portal guard's redirect
+    // here would ping-pong with this redirect and produce an infinite loop.
+    const hasAuthError = req.nextUrl.searchParams.has("error");
+    if (
+      user &&
+      role &&
+      !hasAuthError &&
+      (path === "/auth/login" || path === "/auth/signup")
+    ) {
       return applyCookies(
         NextResponse.redirect(new URL(dashboardPathForRole(role), req.url)),
         pendingCookies

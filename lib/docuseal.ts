@@ -658,9 +658,10 @@ export async function handleDocusealWebhook(req: NextRequest) {
         contract_signed_at: completedAt,
         ...(submissionId ? { docuseal_submission_id: submissionId } : {}),
         onboarding_step: "contract_signed",
+        status: "active",
       })
       .eq("id", providerId)
-      .select("id, email, first_name, last_name, contract_signed")
+      .select("id, email, first_name, last_name, contract_signed, status")
       .maybeSingle();
 
     if (providerErr) {
