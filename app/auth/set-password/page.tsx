@@ -25,24 +25,82 @@ function SetPasswordForm() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
-  const [sessionReady, setSessionReady] = useState(false);
+  const [phase, setPhase] = useState<"loading" | "ready" | "no-session">(
+    "loading"
+  );
 
   useEffect(() => {
     let cancelled = false;
+
     async function ensureSession() {
-      const { data } = await supabase.auth.getSession();
-      if (!cancelled) setSessionReady(Boolean(data.session));
+      // 1) Existing session (handler already established it).
+      const existing = await supabase.auth.getSession();
+      if (existing.data.session) {
+        if (!cancelled) setPhase("ready");
+        return;
+      }
+
+      // 2) Fallback: consume recovery tokens straight from the URL hash.
+      const hash = window.location.hash.startsWith("#")
+        ? window.location.hash.slice(1)
+        : "";
+      const params = new URLSearchParams(hash);
+      const accessToken = params.get("access_token");
+      const refreshToken = params.get("refresh_token");
+
+      if (accessToken && refreshToken) {
+        const { data, error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        window.history.replaceState(
+          null,
+          "",
+          window.location.pathname + window.location.search
+        );
+        if (!cancelled) setPhase(data.session && !error ? "ready" : "no-session");
+        return;
+      }
+
+      if (!cancelled) setPhase("no-session");
     }
+
     void ensureSession();
     return () => {
       cancelled = true;
     };
   }, [supabase]);
 
-  if (!sessionReady) {
+  if (phase === "loading") {
     return (
       <main className="flex min-h-screen items-center justify-center bg-navy-900 p-8">
         <Loader2 className="size-8 animate-spin text-teal-600" />
+      </main>
+    );
+  }
+
+  if (phase === "no-session") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-navy-900 px-4 py-12">
+        <Card className="w-full max-w-md border-navy-700 bg-white text-center shadow-xl">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-2xl font-bold text-navy-900">
+              Link expired
+            </CardTitle>
+            <CardDescription>
+              This password setup link has expired or was already used. Request a
+              new one from the login page using &quot;Forgot password.&quot;
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              className="w-full bg-teal hover:bg-teal-700"
+              onClick={() => router.push("/auth/login")}
+            >
+              Go to login
+            </Button>
+          </CardContent>
+        </Card>
       </main>
     );
   }

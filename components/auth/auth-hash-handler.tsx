@@ -34,41 +34,59 @@ export function AuthHashHandler() {
         ? window.location.hash.slice(1)
         : "";
       const hashParams = new URLSearchParams(hash);
-      const hasHashTokens =
-        hashParams.has("access_token") || hashParams.has("refresh_token");
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+      const errorDescription = hashParams.get("error_description");
 
-      if (!hasHashTokens) return null;
-
-      const type = hashParams.get("type");
-      const { data, error } = await supabase.auth.getSession();
-      if (error) {
-        console.error("[auth-hash] getSession failed:", error.message);
+      if (errorDescription) {
+        console.error("[auth-hash] link error:", errorDescription);
+        stripHashFromUrl();
+        router.replace(
+          `/auth/login?error=${encodeURIComponent(errorDescription)}`
+        );
         return null;
       }
 
-      let session = data.session;
-      if (!session) {
-        await new Promise((r) => setTimeout(r, 150));
-        const retry = await supabase.auth.getSession();
-        session = retry.data.session;
-      }
+      if (!accessToken || !refreshToken) return null;
 
-      if (!session) return null;
+      const type = hashParams.get("type");
+
+      // The PKCE browser client does NOT auto-consume implicit hash tokens, so
+      // we must explicitly establish the session from the link's tokens.
+      const { data, error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+
+      if (error || !data.session) {
+        console.error(
+          "[auth-hash] setSession failed:",
+          error?.message ?? "no session"
+        );
+        stripHashFromUrl();
+        router.replace(
+          "/auth/login?error=" +
+            encodeURIComponent(
+              "Your link has expired or was already used. Use Forgot password to get a new one."
+            )
+        );
+        return null;
+      }
 
       stripHashFromUrl();
 
-      const role = getUserRole(session.user);
+      const role = getUserRole(data.session.user);
       if (type === "recovery") {
         router.replace(setPasswordPathForRole(role));
-        return session;
+        return data.session;
       }
 
       if (type === "signup" || type === "invite" || type === "magiclink") {
         router.replace(dashboardPathForRole(role));
-        return session;
+        return data.session;
       }
 
-      return session;
+      return data.session;
     }
 
     async function handleQueryCode() {
