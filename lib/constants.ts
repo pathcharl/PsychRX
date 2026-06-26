@@ -147,5 +147,6 @@ export const PROVIDER_TYPES: ProviderType[] = [
 // Misc app configuration
 // ---------------------------------------------------------------------------
 export const APP_NAME = "PsychRx";
-export const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://psychrx.com";
+export const APP_URL =
+  process.env.NEXT_PUBLIC_APP_URL ?? "https://www.psychrx.com";
 export const SUPPORT_EMAIL = process.env.OWNER_EMAIL ?? "support@psychrx.com";

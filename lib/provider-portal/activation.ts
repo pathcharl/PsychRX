@@ -67,11 +67,13 @@ async function linkProviderToAuthUser(
 }
 
 async function createRecoveryLink(email: string): Promise<string | null> {
-  const callbackUrl = `${APP_URL}/auth/callback?next=${encodeURIComponent("/auth/set-password?redirect=/portal/dashboard")}`;
+  // Recovery links deliver tokens in the URL hash (implicit flow), which the
+  // set-password page consumes directly — no /auth/callback (PKCE) hop needed.
+  const redirectUrl = `${APP_URL}/auth/set-password?redirect=${encodeURIComponent("/portal/dashboard")}`;
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "recovery",
     email: email.trim().toLowerCase(),
-    options: { redirectTo: callbackUrl },
+    options: { redirectTo: redirectUrl },
   });
   if (error) {
     console.error(`${LOG_PREFIX} generateLink failed:`, error.message);
