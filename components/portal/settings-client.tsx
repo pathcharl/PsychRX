@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { CheckCircle2, ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -31,6 +31,8 @@ export function SettingsClient({ provider }: SettingsClientProps) {
   const [phoneCode, setPhoneCode] = useState("");
   const [emailSent, setEmailSent] = useState(false);
   const [phoneSent, setPhoneSent] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [phoneVerified, setPhoneVerified] = useState(false);
   const [emailToken, setEmailToken] = useState("");
   const [phoneToken, setPhoneToken] = useState("");
   const [sending, setSending] = useState<"email" | "phone" | null>(null);
@@ -105,10 +107,12 @@ export function SettingsClient({ provider }: SettingsClientProps) {
         setEmailSent(false);
         setEmailCode("");
         setEmailToken("");
+        setEmailVerified(true);
       } else {
         setPhoneSent(false);
         setPhoneCode("");
         setPhoneToken("");
+        setPhoneVerified(true);
       }
     } catch {
       toast.error("Invalid verification code.");
@@ -174,11 +178,20 @@ export function SettingsClient({ provider }: SettingsClientProps) {
             <Input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setEmailVerified(false);
+                setEmailSent(false);
+              }}
               className="mt-1"
             />
           </div>
-          {!emailSent ? (
+          {emailVerified ? (
+            <p className="flex items-center gap-2 text-sm font-medium text-emerald-700">
+              <CheckCircle2 className="size-4" />
+              Email verified and updated.
+            </p>
+          ) : !emailSent ? (
             <Button
               variant="outline"
               onClick={() => sendVerification("email")}
@@ -223,11 +236,20 @@ export function SettingsClient({ provider }: SettingsClientProps) {
             <Input
               type="tel"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                setPhoneVerified(false);
+                setPhoneSent(false);
+              }}
               className="mt-1"
             />
           </div>
-          {!phoneSent ? (
+          {phoneVerified ? (
+            <p className="flex items-center gap-2 text-sm font-medium text-emerald-700">
+              <CheckCircle2 className="size-4" />
+              Phone verified and updated.
+            </p>
+          ) : !phoneSent ? (
             <Button
               variant="outline"
               onClick={() => sendVerification("phone")}
