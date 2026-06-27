@@ -34,6 +34,15 @@ export function PublicNav() {
 
         <div className="flex items-center gap-2">
           <Link
+            href="/login"
+            className={cn(
+              buttonVariants({ variant: "ghost", size: "lg" }),
+              "hidden text-navy hover:text-teal sm:inline-flex"
+            )}
+          >
+            Log in
+          </Link>
+          <Link
             href="/schedule"
             className={cn(
               buttonVariants({ size: "lg" }),
@@ -72,6 +81,13 @@ export function PublicNav() {
               {link.label}
             </Link>
           ))}
+          <Link
+            href="/login"
+            onClick={() => setMobileOpen(false)}
+            className="rounded-lg px-3 py-2.5 text-sm font-medium text-psych-text hover:bg-psych-bg"
+          >
+            Log in
+          </Link>
           <Link
             href="/schedule"
             onClick={() => setMobileOpen(false)}

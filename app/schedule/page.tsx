@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   addDays,
@@ -15,13 +16,14 @@ import {
   ClipboardList,
   CreditCard,
   Loader2,
+  Mail,
   Pill,
   Calendar as CalendarIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageShell } from "@/components/public/page-shell";
 import { StepProgress } from "@/components/public/step-progress";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -173,6 +175,10 @@ export default function SchedulePage() {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [confirmedAppointment, setConfirmedAppointment] =
     useState<ConfirmedAppointment | null>(null);
+  const [portalInfo, setPortalInfo] = useState<{
+    accountCreated: boolean;
+    emailSent: boolean;
+  } | null>(null);
 
   const calendarDays = useMemo(() => {
     const today = startOfDay(new Date());
@@ -393,6 +399,14 @@ export default function SchedulePage() {
         return;
       }
       setConfirmedAppointment(result.appointment);
+      setPortalInfo(
+        result.portal
+          ? {
+              accountCreated: Boolean(result.portal.account_created),
+              emailSent: Boolean(result.portal.activation_email_sent),
+            }
+          : null
+      );
       setStep(7);
       setConfirmed(true);
       setTimeout(() => setShowCheck(true), 100);
@@ -440,6 +454,44 @@ export default function SchedulePage() {
             <p className="mt-2 text-psych-text/70">
               Your appointment has been confirmed.
             </p>
+          </div>
+
+          {/* Next steps: set up / access the patient portal */}
+          <div className="mt-6 rounded-xl border border-teal/30 bg-teal/5 p-5">
+            <div className="flex items-start gap-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-teal/15">
+                <Mail className="size-5 text-teal" />
+              </div>
+              <div className="text-sm">
+                <p className="font-semibold text-navy">
+                  {portalInfo?.accountCreated
+                    ? "Check your email to finish setting up your account"
+                    : "Check your email"}
+                </p>
+                <p className="mt-1 text-psych-text/70">
+                  {portalInfo?.accountCreated ? (
+                    <>
+                      We sent a link to{" "}
+                      <span className="font-medium text-navy">
+                        {data.email}
+                      </span>{" "}
+                      to set your password. Once you do, you can view this
+                      appointment, message your provider, and manage your
+                      visits in your patient portal.
+                    </>
+                  ) : (
+                    <>
+                      We sent a confirmation to{" "}
+                      <span className="font-medium text-navy">
+                        {data.email}
+                      </span>
+                      . You can view this appointment and manage your visits in
+                      your patient portal.
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
           </div>
 
           <Card className="mt-8 border-navy/10">
@@ -490,7 +542,17 @@ export default function SchedulePage() {
             </CardContent>
           </Card>
 
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <Link
+            href="/patient-portal/dashboard"
+            className={cn(
+              buttonVariants({ size: "lg" }),
+              "mt-6 w-full bg-teal text-white hover:bg-teal-700"
+            )}
+          >
+            Go to Patient Portal
+          </Link>
+
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row">
             <Button variant="outline" className="flex-1 border-navy/20">
               <CalendarIcon className="mr-2 size-4" />
               Add to Google Calendar

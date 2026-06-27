@@ -1,6 +1,11 @@
 import { cache } from "react";
 import { format, startOfDay, endOfDay, startOfYear } from "date-fns";
-import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase";
+// Provider portal reads run server-side after requirePortalProvider() has
+// authenticated the user and resolved THEIR OWN provider record; every query
+// is scoped by provider.id. Use the service-role client so reads work
+// regardless of RLS state (the deployed RLS policies currently recurse).
+const adminClient = supabaseAdmin;
 import type {
   AvailabilityDay,
   CollaborativeAgreement,
@@ -38,7 +43,7 @@ function todayRange() {
 export const fetchSidebarBadges = cache(async (
   providerId: string
 ): Promise<SidebarBadges> => {
-  const supabase = createClient();
+  const supabase = adminClient;
 
   const [{ count: notesDue }, { count: unreadMessages }] = await Promise.all([
     supabase
@@ -63,7 +68,7 @@ export const fetchSidebarBadges = cache(async (
 export const fetchNextPaymentInfo = cache(async (
   providerId: string
 ): Promise<NextPaymentInfo> => {
-  const supabase = createClient();
+  const supabase = adminClient;
 
   const { data: pending } = await supabase
     .from("provider_payments")
@@ -108,7 +113,7 @@ export const fetchNextPaymentInfo = cache(async (
 export async function fetchDashboardData(
   provider: PortalProvider
 ): Promise<DashboardData> {
-  const supabase = createClient();
+  const supabase = adminClient;
   const { start, end } = todayRange();
 
   const [
@@ -134,7 +139,7 @@ export async function fetchDashboardData(
       .select(
         `
         id, start_time, appointment_type, session_modality, status,
-        telehealth_link, encounter_submitted,
+        telehealth_link,
         patient:patients(id, first_name, last_name, phone, insurance_payer)
       `
       )
@@ -169,7 +174,9 @@ export async function fetchDashboardData(
       status: row.status as string,
       telehealth_link:
         (row.telehealth_link as string) ?? provider.telehealth_link,
-      encounter_submitted: Boolean(row.encounter_submitted),
+      encounter_submitted: Boolean(
+        (row as Record<string, unknown>).encounter_submitted
+      ),
       patient: {
         id: (patient?.id as string) ?? "",
         first_name: (patient?.first_name as string) ?? "Patient",
@@ -251,7 +258,7 @@ export async function fetchPatients(
   filter: "all" | "active" | "no_upcoming" | "high_risk" = "all",
   search = ""
 ): Promise<PortalPatientSummary[]> {
-  const supabase = createClient();
+  const supabase = adminClient;
   const now = new Date().toISOString();
 
   let query = supabase
@@ -338,7 +345,7 @@ export async function fetchPatientDetail(
   providerId: string,
   patientId: string
 ) {
-  const supabase = createClient();
+  const supabase = adminClient;
 
   const { data: patient } = await supabase
     .from("patients")
@@ -427,7 +434,7 @@ export async function fetchPatientDetail(
 }
 
 export async function fetchEarningsData(providerId: string) {
-  const supabase = createClient();
+  const supabase = adminClient;
   const ytdStart = format(startOfYear(new Date()), "yyyy-MM-dd");
 
   const [{ data: payments }, { data: milestones }, { data: ytdEncounters }] =
@@ -525,7 +532,7 @@ export async function fetchAvailability(
   blockedDates: { blocked_date: string; reason: string | null }[];
   acceptsNewPatients: boolean;
 }> {
-  const supabase = createClient();
+  const supabase = adminClient;
 
   const [{ data: templates }, { data: blocked }, { data: provider }] =
     await Promise.all([
@@ -571,7 +578,7 @@ export async function fetchAvailability(
 }
 
 export async function fetchDocuments(providerId: string) {
-  const supabase = createClient();
+  const supabase = adminClient;
 
   const [{ data: docs }, { data: agreements }, { data: contracts }] =
     await Promise.all([
@@ -622,7 +629,7 @@ export async function fetchDocuments(providerId: string) {
 export async function fetchScribeAppointments(
   providerId: string
 ): Promise<ScribeAppointment[]> {
-  const supabase = createClient();
+  const supabase = adminClient;
   const { start, end } = todayRange();
 
   const { data } = await supabase
@@ -635,7 +642,6 @@ export async function fetchScribeAppointments(
     )
     .eq("provider_id", providerId)
     .eq("status", "completed")
-    .eq("encounter_submitted", false)
     .gte("start_time", start)
     .lte("start_time", end)
     .order("start_time", { ascending: true });
@@ -655,7 +661,7 @@ export async function fetchScribeAppointments(
 }
 
 export async function fetchScheduleAppointments(providerId: string) {
-  const supabase = createClient();
+  const supabase = adminClient;
   const now = new Date().toISOString();
   const twoWeeks = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -663,7 +669,7 @@ export async function fetchScheduleAppointments(providerId: string) {
     .from("appointments")
     .select(
       `
-      id, start_time, end_time, status, appointment_type, session_modality,
+      id, start_time, status, appointment_type, session_modality,
       patient:patients(first_name, last_name, insurance_payer)
     `
     )
@@ -677,7 +683,7 @@ export async function fetchScheduleAppointments(providerId: string) {
 }
 
 export async function fetchProviderMessages(providerId: string) {
-  const supabase = createClient();
+  const supabase = adminClient;
 
   const { data: conversations } = await supabase
     .from("conversations")

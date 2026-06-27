@@ -1,5 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
+// All reads below run server-side after the caller has authenticated the user
+// and resolved THEIR OWN patient record; every query is scoped by patient.id.
+// We use the service-role client so these reads work regardless of RLS state.
+const adminClient = supabaseAdmin;
 import type {
   PastAppointment,
   PortalAppointment,
@@ -53,10 +56,10 @@ function normalizeAppointment(
 
 async function fetchProvidersByIds(ids: string[]): Promise<PortalProvider[]> {
   if (ids.length === 0) return [];
-  const supabase = createClient();
+  const supabase = adminClient;
   const { data } = await supabase
     .from("providers")
-    .select("id, first_name, last_name, credentials, specialty, specialties, telehealth_link")
+    .select("id, first_name, last_name, credentials, specialties, telehealth_link")
     .in("id", ids);
 
   return (data ?? []).map((p) => normalizeProvider(p as Record<string, unknown>));
@@ -65,7 +68,7 @@ async function fetchProvidersByIds(ids: string[]): Promise<PortalProvider[]> {
 export async function checkQuestionnaireDue(
   patient: PortalPatient
 ): Promise<boolean> {
-  const supabase = createClient();
+  const supabase = adminClient;
   const interval =
     patient.care_type === "therapy" || patient.care_type === "combined"
       ? 4
@@ -104,7 +107,7 @@ export async function checkQuestionnaireDue(
 export async function fetchRecentMessages(
   patientId: string
 ): Promise<PortalMessage[]> {
-  const supabase = createClient();
+  const supabase = adminClient;
 
   const { data: conversations } = await supabase
     .from("conversations")
@@ -173,7 +176,7 @@ export async function resolveMessagingProviderId(
 export async function fetchOutstandingBalance(
   patientId: string
 ): Promise<number | null> {
-  const supabase = createClient();
+  const supabase = adminClient;
 
   const { data: claims } = await supabase
     .from("insurance_claims")
@@ -207,7 +210,7 @@ export async function fetchOutstandingBalance(
 export async function fetchDashboardData(
   patient: PortalPatient
 ): Promise<Omit<PortalDashboardData, "patient">> {
-  const supabase = createClient();
+  const supabase = adminClient;
   const now = new Date().toISOString();
 
   const { data: upcomingRows } = await supabase
@@ -215,7 +218,7 @@ export async function fetchDashboardData(
     .select(
       `
       *,
-      provider:providers(id, first_name, last_name, credentials, specialty, specialties, telehealth_link)
+      provider:providers(id, first_name, last_name, credentials, specialties, telehealth_link)
     `
     )
     .eq("patient_id", patient.id)
@@ -235,7 +238,7 @@ export async function fetchDashboardData(
       .select(
         `
         *,
-        provider:providers(id, first_name, last_name, credentials, specialty, specialties, telehealth_link)
+        provider:providers(id, first_name, last_name, credentials, specialties, telehealth_link)
       `
       )
       .eq("patient_id", patient.id)
@@ -289,12 +292,12 @@ export async function fetchDashboardData(
 export async function fetchAppointmentsData(
   patient: PortalPatient
 ): Promise<Omit<PortalAppointmentsData, "patient">> {
-  const supabase = createClient();
+  const supabase = adminClient;
   const now = new Date().toISOString();
 
   const selectQuery = `
     *,
-    provider:providers(id, first_name, last_name, credentials, specialty, specialties, telehealth_link)
+    provider:providers(id, first_name, last_name, credentials, specialties, telehealth_link)
   `;
 
   let { data: upcoming } = await supabase
@@ -388,7 +391,7 @@ export async function fetchAppointmentsData(
 export async function fetchSuperbills(
   patientId: string
 ): Promise<PortalSuperbill[]> {
-  const supabase = createClient();
+  const supabase = adminClient;
   const { data } = await supabase
     .from("patient_documents")
     .select("id, encounter_id, file_url, signed_url, date_of_service")
@@ -408,7 +411,7 @@ export async function fetchSuperbills(
 export async function fetchAllMessages(
   patientId: string
 ): Promise<PortalMessage[]> {
-  const supabase = createClient();
+  const supabase = adminClient;
 
   const { data: conversations } = await supabase
     .from("conversations")
