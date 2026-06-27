@@ -432,7 +432,7 @@ export function QuickActions() {
   const actions = [
     {
       label: "Schedule Appointment",
-      href: "/schedule",
+      href: "/patient-portal/schedule",
       icon: Calendar,
     },
     {
