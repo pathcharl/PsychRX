@@ -62,16 +62,33 @@ export function ScheduleClient({
                   </div>
                   <div className="flex gap-2">
                     {modality === "video" ? (
-                      <a
-                        href={(appt.telehealth_link as string) ?? telehealthLink ?? "#"}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={buttonVariants({
-                          className: "gap-2 bg-teal hover:bg-teal-700",
-                        })}
-                      >
-                        <ExternalLink className="size-4" /> Join Session
-                      </a>
+                      (() => {
+                        const joinLink =
+                          (appt.telehealth_link as string) || telehealthLink || "";
+                        return joinLink ? (
+                          <a
+                            href={joinLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={buttonVariants({
+                              className: "gap-2 bg-teal hover:bg-teal-700",
+                            })}
+                          >
+                            <ExternalLink className="size-4" /> Join Session
+                          </a>
+                        ) : (
+                          <span
+                            title="Add your telehealth link in Settings → Clinical Profile"
+                            className={buttonVariants({
+                              variant: "outline",
+                              className:
+                                "pointer-events-none gap-2 opacity-60",
+                            })}
+                          >
+                            <ExternalLink className="size-4" /> Add telehealth link
+                          </span>
+                        );
+                      })()
                     ) : (
                       <a
                         href={`tel:${patient?.phone ?? ""}`}

@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { getUser } from "@/lib/auth";
 import { getUserRole, dashboardPathForRole } from "@/lib/roles";
-import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import type { PortalPatient } from "./types";
 
@@ -64,25 +63,68 @@ function normalizePatient(row: Record<string, unknown>): PortalPatient {
   };
 }
 
-export async function getPortalPatient(user: User): Promise<PortalPatient | null> {
-  const supabase = createClient();
+/**
+ * When more than one patients row matches (e.g. a booking created one and an
+ * earlier portal login provisioned an empty duplicate), prefer the record that
+ * actually has an appointment, then one with a linked provider, then the first.
+ */
+async function pickPatientWithBooking(
+  candidates: Record<string, unknown>[]
+): Promise<Record<string, unknown> | null> {
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
 
-  let { data } = await supabase
-    .from("patients")
-    .select("*")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const ids = candidates.map((c) => c.id as string);
+  const { data: appts } = await supabaseAdmin
+    .from("appointments")
+    .select("patient_id, created_at")
+    .in("patient_id", ids)
+    .order("created_at", { ascending: false })
+    .limit(1);
 
-  if (!data && user.email) {
-    const byEmail = await supabase
-      .from("patients")
-      .select("*")
-      .eq("email", user.email)
-      .maybeSingle();
-    data = byEmail.data;
+  const apptPatientId = appts?.[0]?.patient_id as string | undefined;
+  if (apptPatientId) {
+    const withAppt = candidates.find((c) => c.id === apptPatientId);
+    if (withAppt) return withAppt;
   }
 
-  return data ? normalizePatient(data as Record<string, unknown>) : null;
+  const withProvider = candidates.find((c) => c.primary_provider_id);
+  return withProvider ?? candidates[0];
+}
+
+export async function getPortalPatient(user: User): Promise<PortalPatient | null> {
+  // Use the service-role client (not the RLS-bound client) so the lookup never
+  // fails on RLS state — a failed lookup here previously caused a second, empty
+  // patient record to be provisioned, hiding the patient's real appointments.
+  const supabase = supabaseAdmin;
+
+  const { data: byUser } = await supabase
+    .from("patients")
+    .select("*")
+    .eq("user_id", user.id);
+
+  let chosen = await pickPatientWithBooking(
+    (byUser ?? []) as Record<string, unknown>[]
+  );
+
+  if (!chosen && user.email) {
+    const { data: byEmail } = await supabase
+      .from("patients")
+      .select("*")
+      .ilike("email", user.email);
+    chosen = await pickPatientWithBooking(
+      (byEmail ?? []) as Record<string, unknown>[]
+    );
+    // Backfill the auth link so future lookups resolve by user_id directly.
+    if (chosen && !chosen.user_id) {
+      await supabase
+        .from("patients")
+        .update({ user_id: user.id })
+        .eq("id", chosen.id as string);
+    }
+  }
+
+  return chosen ? normalizePatient(chosen) : null;
 }
 
 /** Create or link a patients row after auth signup (no row is created by signUp alone). */
