@@ -31,10 +31,20 @@ export function SettingsClient({ provider }: SettingsClientProps) {
   const [phoneCode, setPhoneCode] = useState("");
   const [emailSent, setEmailSent] = useState(false);
   const [phoneSent, setPhoneSent] = useState(false);
+  const [emailToken, setEmailToken] = useState("");
+  const [phoneToken, setPhoneToken] = useState("");
+  const [sending, setSending] = useState<"email" | "phone" | null>(null);
+  const [verifying, setVerifying] = useState<"email" | "phone" | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [saving, setSaving] = useState(false);
 
   async function sendVerification(field: "email" | "phone") {
+    const value = field === "email" ? email : phone;
+    if (!value.trim()) {
+      toast.error(`Enter your ${field} first.`);
+      return;
+    }
+    setSending(field);
     try {
       const res = await fetch("/api/portal/settings", {
         method: "POST",
@@ -43,19 +53,35 @@ export function SettingsClient({ provider }: SettingsClientProps) {
           provider_id: provider.id,
           action: "send_verification",
           field,
-          value: field === "email" ? email : phone,
+          value,
         }),
       });
-      if (!res.ok) throw new Error("Failed");
-      if (field === "email") setEmailSent(true);
-      else setPhoneSent(true);
-      toast.success(`Verification code sent to your ${field}.`);
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(result.error ?? "Could not send verification code.");
+        return;
+      }
+      if (field === "email") {
+        setEmailSent(true);
+        setEmailToken(result.token ?? "");
+      } else {
+        setPhoneSent(true);
+        setPhoneToken(result.token ?? "");
+      }
+      toast.success(
+        field === "email"
+          ? `We emailed a 6-digit code to ${value}.`
+          : `We texted a 6-digit code to ${value}.`
+      );
     } catch {
       toast.error("Could not send verification code.");
+    } finally {
+      setSending(null);
     }
   }
 
   async function verifyField(field: "email" | "phone") {
+    setVerifying(field);
     try {
       const res = await fetch("/api/portal/settings", {
         method: "POST",
@@ -66,19 +92,28 @@ export function SettingsClient({ provider }: SettingsClientProps) {
           field,
           code: field === "email" ? emailCode : phoneCode,
           value: field === "email" ? email : phone,
+          token: field === "email" ? emailToken : phoneToken,
         }),
       });
-      if (!res.ok) throw new Error("Failed");
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(result.error ?? "Invalid verification code.");
+        return;
+      }
       toast.success(`${field === "email" ? "Email" : "Phone"} updated.`);
       if (field === "email") {
         setEmailSent(false);
         setEmailCode("");
+        setEmailToken("");
       } else {
         setPhoneSent(false);
         setPhoneCode("");
+        setPhoneToken("");
       }
     } catch {
       toast.error("Invalid verification code.");
+    } finally {
+      setVerifying(null);
     }
   }
 
@@ -144,21 +179,34 @@ export function SettingsClient({ provider }: SettingsClientProps) {
             />
           </div>
           {!emailSent ? (
-            <Button variant="outline" onClick={() => sendVerification("email")}>
-              Send SMS Verification Code
+            <Button
+              variant="outline"
+              onClick={() => sendVerification("email")}
+              disabled={sending === "email"}
+            >
+              {sending === "email" && (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              )}
+              Email me a verification code
             </Button>
           ) : (
             <div className="flex gap-2">
               <Input
                 value={emailCode}
                 onChange={(e) => setEmailCode(e.target.value)}
-                placeholder="Enter code"
+                placeholder="Enter 6-digit code"
+                inputMode="numeric"
               />
               <Button
                 className="bg-teal hover:bg-teal-700"
                 onClick={() => verifyField("email")}
+                disabled={verifying === "email"}
               >
-                Verify
+                {verifying === "email" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  "Verify"
+                )}
               </Button>
             </div>
           )}
@@ -180,24 +228,41 @@ export function SettingsClient({ provider }: SettingsClientProps) {
             />
           </div>
           {!phoneSent ? (
-            <Button variant="outline" onClick={() => sendVerification("phone")}>
-              Send SMS Verification Code
+            <Button
+              variant="outline"
+              onClick={() => sendVerification("phone")}
+              disabled={sending === "phone"}
+            >
+              {sending === "phone" && (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              )}
+              Text me a verification code
             </Button>
           ) : (
             <div className="flex gap-2">
               <Input
                 value={phoneCode}
                 onChange={(e) => setPhoneCode(e.target.value)}
-                placeholder="Enter code"
+                placeholder="Enter 6-digit code"
+                inputMode="numeric"
               />
               <Button
                 className="bg-teal hover:bg-teal-700"
                 onClick={() => verifyField("phone")}
+                disabled={verifying === "phone"}
               >
-                Verify
+                {verifying === "phone" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  "Verify"
+                )}
               </Button>
             </div>
           )}
+          <p className="text-xs text-navy/50">
+            Use international format (e.g. +234 for Nigeria). If SMS doesn&apos;t
+            arrive, verify your email instead.
+          </p>
         </CardContent>
       </Card>
 
