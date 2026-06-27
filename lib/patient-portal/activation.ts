@@ -70,9 +70,14 @@ async function linkPatientToAuthUser(
 }
 
 async function createRecoveryLink(email: string): Promise<string | null> {
-  // Recovery links deliver tokens in the URL hash (implicit flow), which the
-  // set-password page consumes directly — no /auth/callback (PKCE) hop needed.
-  const redirectUrl = `${APP_URL}/patient-portal/set-password?redirect=${encodeURIComponent("/patient-portal/dashboard")}`;
+  // Recovery links deliver tokens in the URL hash (implicit flow). We point at
+  // the shared /auth/set-password page because it is already in Supabase's
+  // Redirect URL allow-list (an un-allowlisted redirect_to makes Supabase
+  // return an error, which bounces the user to /login). The global
+  // AuthHashHandler then routes a patient on to /patient-portal/set-password
+  // once the session is established, and this page itself falls back to the
+  // patient dashboard via the redirect param.
+  const redirectUrl = `${APP_URL}/auth/set-password?redirect=${encodeURIComponent("/patient-portal/dashboard")}`;
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "recovery",
     email: email.trim().toLowerCase(),
