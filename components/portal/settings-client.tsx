@@ -281,10 +281,6 @@ export function SettingsClient({ provider }: SettingsClientProps) {
               </Button>
             </div>
           )}
-          <p className="text-xs text-navy/50">
-            Use international format (e.g. +234 for Nigeria). If SMS doesn&apos;t
-            arrive, verify your email instead.
-          </p>
         </CardContent>
       </Card>
 
