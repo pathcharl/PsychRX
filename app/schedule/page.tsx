@@ -127,6 +127,7 @@ interface BookingData {
   state: string;
   emergencyContact: string;
   agreedToPolicy: boolean;
+  smsConsent: boolean;
 }
 
 const initialData: BookingData = {
@@ -148,6 +149,7 @@ const initialData: BookingData = {
   state: "FL",
   emergencyContact: "",
   agreedToPolicy: false,
+  smsConsent: false,
 };
 
 function slotPeriod(label: string): "Morning" | "Afternoon" | "Evening" {
@@ -291,6 +293,10 @@ export default function SchedulePage() {
           !data.emergencyContact
         ) {
           toast.error("Please complete all required fields.");
+          return false;
+        }
+        if (!data.smsConsent) {
+          toast.error("Please agree to receive SMS reminders to continue.");
           return false;
         }
         return true;
@@ -906,6 +912,38 @@ export default function SchedulePage() {
                   }
                   placeholder="Name and phone"
                 />
+              </div>
+              <div className="sm:col-span-2">
+                <button
+                  type="button"
+                  onClick={() => updateField("smsConsent", !data.smsConsent)}
+                  className="flex items-start gap-3 text-left"
+                >
+                  <span
+                    className={cn(
+                      "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border-2",
+                      data.smsConsent
+                        ? "border-teal bg-teal text-white"
+                        : "border-navy/30"
+                    )}
+                  >
+                    {data.smsConsent && <Check className="size-3" />}
+                  </span>
+                  <span className="text-sm text-psych-text/70">
+                    I agree to receive SMS appointment reminders and
+                    notifications from PsychRx. Message &amp; data rates may
+                    apply. Reply STOP to opt out at any time. See our{" "}
+                    <Link
+                      href="/privacy"
+                      target="_blank"
+                      onClick={(e) => e.stopPropagation()}
+                      className="font-medium text-teal underline underline-offset-2"
+                    >
+                      Privacy Policy
+                    </Link>{" "}
+                    for full details. *
+                  </span>
+                </button>
               </div>
             </CardContent>
           </Card>
