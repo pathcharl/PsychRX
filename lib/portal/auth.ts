@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { getUser } from "@/lib/auth";
 import { getUserRole, dashboardPathForRole } from "@/lib/roles";
-import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import type { PortalProvider } from "./types";
 
@@ -54,25 +53,49 @@ export async function requireProviderPortalAuth(): Promise<User> {
   return user;
 }
 
-export async function getPortalProvider(user: User): Promise<PortalProvider | null> {
-  const supabase = createClient();
+/**
+ * When more than one providers row matches (e.g. an application created one and
+ * an earlier login provisioned a duplicate), prefer the active record, then the
+ * first. Mirrors the patient-portal resolution so an RLS hiccup can never strand
+ * a provider on an empty/duplicate profile.
+ */
+function pickProvider(
+  candidates: Record<string, unknown>[]
+): Record<string, unknown> | null {
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+  return candidates.find((c) => c.status === "active") ?? candidates[0];
+}
 
-  let { data } = await supabase
+export async function getPortalProvider(user: User): Promise<PortalProvider | null> {
+  // Use the service-role client (not the RLS-bound client) so the lookup never
+  // fails on RLS state — a failed lookup here would otherwise provision a second,
+  // empty provider record and strand the user on a blank dashboard.
+  const supabase = supabaseAdmin;
+
+  const { data: byUser } = await supabase
     .from("providers")
     .select("*")
-    .eq("user_id", user.id)
-    .maybeSingle();
+    .eq("user_id", user.id);
 
-  if (!data && user.email) {
-    const byEmail = await supabase
+  let chosen = pickProvider((byUser ?? []) as Record<string, unknown>[]);
+
+  if (!chosen && user.email) {
+    const { data: byEmail } = await supabase
       .from("providers")
       .select("*")
-      .eq("email", user.email)
-      .maybeSingle();
-    data = byEmail.data;
+      .ilike("email", user.email);
+    chosen = pickProvider((byEmail ?? []) as Record<string, unknown>[]);
+    // Backfill the auth link so future lookups resolve by user_id directly.
+    if (chosen && !chosen.user_id) {
+      await supabase
+        .from("providers")
+        .update({ user_id: user.id })
+        .eq("id", chosen.id as string);
+    }
   }
 
-  return data ? normalizeProvider(data as Record<string, unknown>) : null;
+  return chosen ? normalizeProvider(chosen) : null;
 }
 
 async function provisionProviderProfile(user: User): Promise<PortalProvider | null> {
