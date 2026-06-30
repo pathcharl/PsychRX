@@ -45,25 +45,56 @@ export const fetchSidebarBadges = cache(async (
 ): Promise<SidebarBadges> => {
   const supabase = adminClient;
 
-  const [{ count: notesDue }, { count: unreadMessages }] = await Promise.all([
+  // Scope unread messages to THIS provider's conversations only.
+  const convIds = await providerConversationIds(providerId);
+
+  const [{ count: notesDue }, unread] = await Promise.all([
     supabase
       .from("appointments")
       .select("*", { count: "exact", head: true })
       .eq("provider_id", providerId)
-      .eq("status", "completed")
-      .eq("encounter_submitted", false),
-    supabase
-      .from("messages")
-      .select("*", { count: "exact", head: true })
-      .eq("read_at", null)
-      .neq("sender_type", "provider"),
+      .eq("encounter_submitted", false)
+      .neq("status", "cancelled")
+      .lte("start_time", new Date().toISOString()),
+    convIds.length
+      ? supabase
+          .from("messages")
+          .select("*", { count: "exact", head: true })
+          .in("conversation_id", convIds)
+          .is("read_at", null)
+          .neq("sender_type", "provider")
+      : Promise.resolve({ count: 0 }),
   ]);
 
   return {
     notesDue: notesDue ?? 0,
-    unreadMessages: unreadMessages ?? 0,
+    unreadMessages: unread.count ?? 0,
   };
 });
+
+/** Conversation IDs that include this provider as a participant. */
+async function providerConversationIds(providerId: string): Promise<string[]> {
+  const { data } = await adminClient
+    .from("conversations")
+    .select("id")
+    .contains("participants", [{ provider_id: providerId }]);
+  return (data ?? []).map((c) => c.id as string);
+}
+
+/** Conversation IDs shared by a specific patient and provider. */
+async function pairConversationIds(
+  providerId: string,
+  patientId: string
+): Promise<string[]> {
+  const { data } = await adminClient
+    .from("conversations")
+    .select("id")
+    .contains("participants", [
+      { patient_id: patientId },
+      { provider_id: providerId },
+    ]);
+  return (data ?? []).map((c) => c.id as string);
+}
 
 export const fetchNextPaymentInfo = cache(async (
   providerId: string
@@ -360,6 +391,9 @@ export async function fetchPatientDetail(
 
   const now = new Date().toISOString();
 
+  // Only this patient/provider conversation's messages (never a global query).
+  const convIds = await pairConversationIds(providerId, patientId);
+
   const [
     { count: sessionCount },
     { data: upcoming },
@@ -394,11 +428,14 @@ export async function fetchPatientDetail(
       .eq("patient_id", patientId)
       .eq("measure_type", "PHQ9")
       .order("created_at", { ascending: true }),
-    supabase
-      .from("messages")
-      .select("id, content, sender_type, created_at, read_at")
-      .order("created_at", { ascending: true })
-      .limit(50),
+    convIds.length
+      ? supabase
+          .from("messages")
+          .select("id, content, sender_type, created_at, read_at")
+          .in("conversation_id", convIds)
+          .order("created_at", { ascending: true })
+          .limit(50)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
   ]);
 
   const phq9Trend: Phq9Point[] = (phq9 ?? []).map((m) => ({
@@ -630,7 +667,11 @@ export async function fetchScribeAppointments(
   providerId: string
 ): Promise<ScribeAppointment[]> {
   const supabase = adminClient;
-  const { start, end } = todayRange();
+  // Sessions are documentable once their scheduled time has passed and a note
+  // hasn't been submitted yet. We look back 7 days so a provider can catch up,
+  // rather than requiring a separate "mark completed" step.
+  const now = new Date();
+  const lookback = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   const { data } = await supabase
     .from("appointments")
@@ -641,9 +682,10 @@ export async function fetchScribeAppointments(
     `
     )
     .eq("provider_id", providerId)
-    .eq("status", "completed")
-    .gte("start_time", start)
-    .lte("start_time", end)
+    .eq("encounter_submitted", false)
+    .neq("status", "cancelled")
+    .gte("start_time", lookback.toISOString())
+    .lte("start_time", now.toISOString())
     .order("start_time", { ascending: true });
 
   return (data ?? []).map((row) => {
@@ -692,14 +734,9 @@ export async function fetchProviderMessages(providerId: string) {
     .order("last_message_at", { ascending: false })
     .limit(20);
 
+  // No conversations → empty (never fall back to a global message query).
   if (!conversations?.length) {
-    const { data: messages } = await supabase
-      .from("messages")
-      .select("id, content, sender_type, created_at, read_at, conversation_id")
-      .order("created_at", { ascending: false })
-      .limit(30);
-
-    return { conversations: [], messages: messages ?? [] };
+    return { conversations: [], messages: [] };
   }
 
   const convIds = conversations.map((c) => c.id);

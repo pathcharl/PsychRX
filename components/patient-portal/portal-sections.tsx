@@ -1,19 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import {
   Calendar,
   CalendarPlus,
+  Loader2,
   MessageSquare,
   Phone,
   Video,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import {
   Dialog,
   DialogContent,
@@ -44,6 +44,36 @@ import {
 } from "@/lib/patient-portal/utils";
 import { toast } from "sonner";
 
+interface RescheduleSlot {
+  id: string;
+  start_time: string;
+  label: string;
+}
+
+const RESCHEDULE_DAYS_TO_SHOW = 14;
+
+function rsDateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function rescheduleDayOptions(): { key: string; weekday: string; day: string }[] {
+  const out: { key: string; weekday: string; day: string }[] = [];
+  const today = new Date();
+  for (let i = 0; i < RESCHEDULE_DAYS_TO_SHOW; i += 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() + i);
+    out.push({
+      key: rsDateKey(date),
+      weekday: new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(date),
+      day: new Intl.DateTimeFormat("en-US", { day: "numeric" }).format(date),
+    });
+  }
+  return out;
+}
+
 interface AppointmentActionsProps {
   appointment: PortalAppointment;
   patient: PortalPatient;
@@ -54,11 +84,16 @@ export function AppointmentActions({
   patient,
 }: AppointmentActionsProps) {
   const router = useRouter();
+  const rescheduleDays = useMemo(() => rescheduleDayOptions(), []);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [rsDay, setRsDay] = useState<string>(() => rescheduleDayOptions()[0].key);
+  const [rsSlots, setRsSlots] = useState<RescheduleSlot[]>([]);
+  const [rsLoading, setRsLoading] = useState(false);
+  const [rsSlot, setRsSlot] = useState<RescheduleSlot | null>(null);
+  const [rescheduling, setRescheduling] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelConfirm, setCancelConfirm] = useState("");
   const [cancelling, setCancelling] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   const isVideo = appointment.session_modality === "video";
   const joinActive = isJoinSessionActive(appointment.scheduled_at);
   const cancelFee = getCancellationFee(appointment.scheduled_at);
@@ -69,13 +104,61 @@ export function AppointmentActions({
     ? providerDisplayName(appointment.provider)
     : "Your provider";
 
-  function handleRescheduleConfirm() {
-    if (!selectedDate) {
-      toast.error("Please select a new date.");
+  const loadRescheduleSlots = useCallback(
+    async (day: string) => {
+      setRsLoading(true);
+      setRsSlot(null);
+      try {
+        const res = await fetch(
+          `/api/schedule/slots?provider_id=${appointment.provider_id}&date=${day}`
+        );
+        const result = await res.json().catch(() => ({}));
+        setRsSlots(res.ok ? (result.slots ?? []) : []);
+      } catch {
+        setRsSlots([]);
+      } finally {
+        setRsLoading(false);
+      }
+    },
+    [appointment.provider_id]
+  );
+
+  useEffect(() => {
+    if (rescheduleOpen && !rescheduleLimitReached) {
+      void loadRescheduleSlots(rsDay);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rescheduleOpen, rsDay]);
+
+  async function handleRescheduleConfirm() {
+    if (!rsSlot) {
+      toast.error("Please select a new time.");
       return;
     }
-    toast.success("Reschedule request submitted. We'll confirm by text.");
-    setRescheduleOpen(false);
+    setRescheduling(true);
+    try {
+      const res = await fetch("/api/appointments/reschedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          appointment_id: appointment.id,
+          new_slot_id: rsSlot.id,
+        }),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(result.error ?? "Could not reschedule. Try another time.");
+        await loadRescheduleSlots(rsDay);
+        return;
+      }
+      toast.success("Appointment rescheduled.");
+      setRescheduleOpen(false);
+      router.refresh();
+    } catch {
+      toast.error("Could not reschedule. Please try again.");
+    } finally {
+      setRescheduling(false);
+    }
   }
 
   async function handleCancelConfirm() {
@@ -165,7 +248,7 @@ export function AppointmentActions({
               .
             </p>
           ) : (
-            <>
+            <div className="space-y-4">
               {rescheduleFee && (
                 <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
                   {rescheduleFee.label} applies for changes within{" "}
@@ -173,22 +256,83 @@ export function AppointmentActions({
                   appointment.
                 </p>
               )}
-              <CalendarPicker
-                mode="single"
-                selected={selectedDate}
-                onSelect={setSelectedDate}
-                disabled={(date) => date < new Date()}
-                className="mx-auto rounded-lg border"
-              />
-            </>
+
+              <div>
+                <p className="mb-2 text-sm font-medium text-navy">Choose a day</p>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {rescheduleDays.map((d) => {
+                    const active = d.key === rsDay;
+                    return (
+                      <button
+                        key={d.key}
+                        type="button"
+                        onClick={() => setRsDay(d.key)}
+                        className={`flex min-w-[52px] flex-col items-center rounded-lg border px-2 py-1.5 text-xs transition ${
+                          active
+                            ? "border-teal bg-teal text-white"
+                            : "border-navy/10 bg-white text-navy hover:border-teal/40"
+                        }`}
+                      >
+                        <span className="uppercase opacity-80">{d.weekday}</span>
+                        <span className="text-base font-semibold">{d.day}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-sm font-medium text-navy">
+                  Available times
+                </p>
+                {rsLoading ? (
+                  <div className="flex items-center gap-2 py-4 text-sm text-navy/60">
+                    <Loader2 className="size-4 animate-spin" /> Loading times…
+                  </div>
+                ) : rsSlots.length === 0 ? (
+                  <p className="py-4 text-sm text-navy/60">
+                    No open times on this day. Try another date.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {rsSlots.map((slot) => {
+                      const active = rsSlot?.id === slot.id;
+                      return (
+                        <button
+                          key={slot.id}
+                          type="button"
+                          onClick={() => setRsSlot(slot)}
+                          className={`rounded-lg border px-2 py-2 text-sm font-medium transition ${
+                            active
+                              ? "border-teal bg-teal text-white"
+                              : "border-navy/10 bg-white text-navy hover:border-teal/40"
+                          }`}
+                        >
+                          {slot.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRescheduleOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setRescheduleOpen(false)}
+              disabled={rescheduling}
+            >
               Close
             </Button>
             {!rescheduleLimitReached && (
-              <Button onClick={handleRescheduleConfirm}>Confirm date</Button>
+              <Button
+                onClick={handleRescheduleConfirm}
+                disabled={!rsSlot || rescheduling}
+              >
+                {rescheduling ? "Rescheduling…" : "Confirm time"}
+              </Button>
             )}
           </DialogFooter>
         </DialogContent>

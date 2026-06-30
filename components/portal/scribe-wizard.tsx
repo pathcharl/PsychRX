@@ -212,12 +212,15 @@ export function ScribeWizard({ appointments, providerId }: ScribeWizardProps) {
         <Card className="border-navy/10">
           <CardHeader>
             <CardTitle className="font-heading text-lg text-navy">
-              Select today&apos;s completed session
+              Select a session to document
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {appointments.length === 0 ? (
-              <p className="text-navy/60">No completed sessions needing notes.</p>
+              <p className="text-navy/60">
+                No sessions are ready to document yet. Sessions appear here once
+                their scheduled time has passed.
+              </p>
             ) : (
               appointments.map((appt) => (
                 <button
