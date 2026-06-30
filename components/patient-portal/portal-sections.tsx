@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import {
@@ -52,9 +53,11 @@ export function AppointmentActions({
   appointment,
   patient,
 }: AppointmentActionsProps) {
+  const router = useRouter();
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelConfirm, setCancelConfirm] = useState("");
+  const [cancelling, setCancelling] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   const isVideo = appointment.session_modality === "video";
   const joinActive = isJoinSessionActive(appointment.scheduled_at);
@@ -75,14 +78,35 @@ export function AppointmentActions({
     setRescheduleOpen(false);
   }
 
-  function handleCancelConfirm() {
+  async function handleCancelConfirm() {
     if (cancelFee && cancelConfirm.trim().toUpperCase() !== "CANCEL") {
       toast.error('Please type CANCEL to confirm.');
       return;
     }
-    toast.success("Appointment cancelled.");
-    setCancelOpen(false);
-    setCancelConfirm("");
+    setCancelling(true);
+    try {
+      const res = await fetch("/api/appointments/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          appointment_id: appointment.id,
+          cancelled_by: "patient",
+        }),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(result.error ?? "Could not cancel appointment.");
+        return;
+      }
+      toast.success("Appointment cancelled.");
+      setCancelOpen(false);
+      setCancelConfirm("");
+      router.refresh();
+    } catch {
+      toast.error("Could not cancel the appointment. Please try again.");
+    } finally {
+      setCancelling(false);
+    }
   }
 
   return (
@@ -196,11 +220,19 @@ export function AppointmentActions({
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCancelOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setCancelOpen(false)}
+              disabled={cancelling}
+            >
               Keep appointment
             </Button>
-            <Button variant="destructive" onClick={handleCancelConfirm}>
-              Cancel appointment
+            <Button
+              variant="destructive"
+              onClick={handleCancelConfirm}
+              disabled={cancelling}
+            >
+              {cancelling ? "Cancelling…" : "Cancel appointment"}
             </Button>
           </DialogFooter>
         </DialogContent>

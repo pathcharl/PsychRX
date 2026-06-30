@@ -115,24 +115,9 @@ export async function fetchRecentMessages(
     .contains("participants", [{ patient_id: patientId }])
     .limit(5);
 
-  if (!conversations?.length) {
-    const { data: fallback } = await supabase
-      .from("messages")
-      .select("id, content, sender_type, created_at, message_type, read_at")
-      .order("created_at", { ascending: false })
-      .limit(2);
-
-    return (fallback ?? []).map((m) => ({
-      id: m.id as string,
-      content: m.content as string,
-      sender_type: (m.sender_type === "provider" ? "provider" : "patient") as
-        | "patient"
-        | "provider",
-      created_at: m.created_at as string,
-      message_type: (m.message_type as string) ?? "general",
-      read_at: (m.read_at as string) ?? null,
-    }));
-  }
+  // No conversation yet → no messages (never fall back to a global query,
+  // which would leak other patients' messages).
+  if (!conversations?.length) return [];
 
   const conversationIds = conversations.map((c) => c.id);
   const { data: messages } = await supabase
@@ -154,13 +139,15 @@ export async function fetchRecentMessages(
   }));
 }
 
-/** Provider to message: primary → secondary → most recent appointment. */
+/**
+ * Provider to message. We prefer the provider on the patient's most recently
+ * booked appointment so messaging always targets the provider they actually
+ * booked with (a stale primary_provider_id could otherwise point elsewhere).
+ * Falls back to the assigned primary/secondary provider.
+ */
 export async function resolveMessagingProviderId(
   patient: PortalPatient
 ): Promise<string | null> {
-  if (patient.primary_provider_id) return patient.primary_provider_id;
-  if (patient.secondary_provider_id) return patient.secondary_provider_id;
-
   const { data: appt } = await supabaseAdmin
     .from("appointments")
     .select("provider_id")
@@ -170,7 +157,10 @@ export async function resolveMessagingProviderId(
     .limit(1)
     .maybeSingle();
 
-  return (appt?.provider_id as string | undefined) ?? null;
+  if (appt?.provider_id) return appt.provider_id as string;
+  if (patient.primary_provider_id) return patient.primary_provider_id;
+  if (patient.secondary_provider_id) return patient.secondary_provider_id;
+  return null;
 }
 
 export async function fetchOutstandingBalance(
@@ -418,20 +408,19 @@ export async function fetchAllMessages(
     .select("id")
     .contains("participants", [{ patient_id: patientId }]);
 
-  let query = supabase
+  // No conversation yet → empty thread (never query messages globally, which
+  // would expose other patients' messages).
+  if (!conversations?.length) return [];
+
+  const { data } = await supabase
     .from("messages")
     .select("id, content, sender_type, created_at, message_type, read_at")
-    .order("created_at", { ascending: true })
-    .limit(100);
-
-  if (conversations?.length) {
-    query = query.in(
+    .in(
       "conversation_id",
       conversations.map((c) => c.id)
-    );
-  }
-
-  const { data } = await query;
+    )
+    .order("created_at", { ascending: true })
+    .limit(100);
 
   return (data ?? []).map((m) => ({
     id: m.id as string,
