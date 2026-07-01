@@ -73,6 +73,7 @@ interface ApplicationData {
   licenseState: string;
   malpracticeCarrier: string;
   malpracticePolicy: string;
+  malpracticeExpiry: string;
   insurancePanels: string[];
   specialties: string[];
   conditions: string;
@@ -91,6 +92,7 @@ const initialData: ApplicationData = {
   licenseState: "FL",
   malpracticeCarrier: "",
   malpracticePolicy: "",
+  malpracticeExpiry: "",
   insurancePanels: [],
   specialties: [],
   conditions: "",
@@ -160,6 +162,14 @@ export default function ProviderApplyPage() {
           toast.error("License number is required.");
           return false;
         }
+        if (!data.malpracticeCarrier) {
+          toast.error("Malpractice carrier is required.");
+          return false;
+        }
+        if (!data.malpracticeExpiry) {
+          toast.error("Malpractice expiry date is required.");
+          return false;
+        }
         return true;
       default:
         return true;
@@ -190,6 +200,8 @@ export default function ProviderApplyPage() {
           provider_type: data.providerType,
           license_number: data.licenseNumber,
           license_state: data.licenseState,
+          malpractice_carrier: data.malpracticeCarrier,
+          malpractice_expiry: data.malpracticeExpiry,
           credentials: data.credentials,
           specialties: data.specialties,
           languages: ["English"],
@@ -354,14 +366,26 @@ export default function ProviderApplyPage() {
                     />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Malpractice carrier</Label>
-                  <Input
-                    value={data.malpracticeCarrier}
-                    onChange={(e) =>
-                      updateField("malpracticeCarrier", e.target.value)
-                    }
-                  />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Malpractice carrier *</Label>
+                    <Input
+                      value={data.malpracticeCarrier}
+                      onChange={(e) =>
+                        updateField("malpracticeCarrier", e.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Malpractice expiry date *</Label>
+                    <Input
+                      type="date"
+                      value={data.malpracticeExpiry}
+                      onChange={(e) =>
+                        updateField("malpracticeExpiry", e.target.value)
+                      }
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Policy number</Label>
@@ -372,6 +396,10 @@ export default function ProviderApplyPage() {
                     }
                   />
                 </div>
+                <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  You must provide your own malpractice insurance to practice on
+                  PsychRx.
+                </p>
               </>
             )}
 
@@ -497,6 +525,17 @@ export default function ProviderApplyPage() {
                     {data.licenseNumber} ({data.licenseState})
                   </p>
                 </div>
+                {data.malpracticeCarrier && (
+                  <div>
+                    <p className="font-medium text-navy">Malpractice insurance</p>
+                    <p className="text-psych-text/60">
+                      {data.malpracticeCarrier}
+                      {data.malpracticeExpiry
+                        ? ` · expires ${data.malpracticeExpiry}`
+                        : ""}
+                    </p>
+                  </div>
+                )}
                 {data.insurancePanels.length > 0 && (
                   <div>
                     <p className="font-medium text-navy">Insurance panels</p>

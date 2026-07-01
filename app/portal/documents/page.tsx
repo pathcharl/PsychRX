@@ -17,6 +17,8 @@ export default async function PortalDocumentsPage() {
       baaSigned={baaSigned}
       caqhLastAttested={provider.caqh_last_attested}
       licenseState={provider.license_state}
+      malpracticeCarrier={provider.malpractice_carrier}
+      malpracticeExpiry={provider.malpractice_expiry}
     />
   );
 }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Upload } from "lucide-react";
+import { ExternalLink, ShieldCheck, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import {
   daysUntilExpiry,
   documentStatusColor,
   formatDate,
+  malpracticeStatusColor,
 } from "@/lib/portal/utils";
 
 const STATUS_STYLES = {
@@ -40,7 +41,23 @@ interface DocumentsClientProps {
   baaSigned: boolean;
   caqhLastAttested: string | null;
   licenseState: string | null;
+  malpracticeCarrier: string | null;
+  malpracticeExpiry: string | null;
 }
+
+const MALPRACTICE_STATUS_TEXT = {
+  green: "text-emerald-700",
+  yellow: "text-amber-700",
+  red: "text-red-700",
+  grey: "text-navy/60",
+};
+
+const MALPRACTICE_STATUS_LABEL = {
+  green: "Active",
+  yellow: "Expiring soon",
+  red: "Action required",
+  grey: "Not uploaded",
+};
 
 export function DocumentsClient({
   providerId,
@@ -50,6 +67,8 @@ export function DocumentsClient({
   baaSigned,
   caqhLastAttested: initialCaqh,
   licenseState,
+  malpracticeCarrier,
+  malpracticeExpiry,
 }: DocumentsClientProps) {
   const router = useRouter();
   const [caqhDate, setCaqhDate] = useState(initialCaqh ?? "");
@@ -119,6 +138,75 @@ export function DocumentsClient({
         </h1>
         <p className="mt-1 text-navy/70">Credentials and compliance documents</p>
       </div>
+
+      {(() => {
+        const malpracticeDays = daysUntilExpiry(malpracticeExpiry);
+        const malpracticeStatus = malpracticeStatusColor(malpracticeDays);
+        return (
+          <Card className={`border ${STATUS_STYLES[malpracticeStatus]}`}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 font-heading text-lg text-navy">
+                <ShieldCheck className="size-5" />
+                Malpractice Insurance
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-sm text-navy/60">Carrier</p>
+                  <p className="font-medium text-navy">
+                    {malpracticeCarrier || "Not provided"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-navy/60">Expiry date</p>
+                  <p
+                    className={`font-medium ${MALPRACTICE_STATUS_TEXT[malpracticeStatus]}`}
+                  >
+                    {malpracticeExpiry ? (
+                      <>
+                        {formatDate(malpracticeExpiry)}
+                        {malpracticeDays != null && malpracticeDays >= 0 && (
+                          <span className="font-normal">
+                            {" "}
+                            ({malpracticeDays} days)
+                          </span>
+                        )}
+                        {malpracticeDays != null && malpracticeDays < 0 && (
+                          <span className="font-normal"> (expired)</span>
+                        )}
+                      </>
+                    ) : (
+                      "Not uploaded yet"
+                    )}
+                  </p>
+                  <p
+                    className={`mt-0.5 text-xs font-medium ${MALPRACTICE_STATUS_TEXT[malpracticeStatus]}`}
+                  >
+                    {MALPRACTICE_STATUS_LABEL[malpracticeStatus]}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                disabled={uploading === "malpractice"}
+                onClick={() => handleUpload("malpractice")}
+              >
+                <Upload className="size-4" />
+                {uploading === "malpractice"
+                  ? "Uploading..."
+                  : "Upload Certificate"}
+              </Button>
+              <p className="text-xs text-navy/50">
+                Providers must maintain their own malpractice insurance. PsychRx
+                does not provide coverage.
+              </p>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       <Card className="border-navy/10">
         <CardHeader>

@@ -17,6 +17,8 @@ export interface PortalProvider {
   stripe_connect_ready: boolean;
   accepts_new_patients: boolean;
   caqh_last_attested: string | null;
+  malpractice_carrier: string | null;
+  malpractice_expiry: string | null;
   pt_profile_url: string | null;
   license_state: string | null;
   provider_type: string | null;

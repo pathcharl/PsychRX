@@ -75,6 +75,16 @@ export function documentStatusColor(
   return "green";
 }
 
+export function malpracticeStatusColor(
+  daysUntil: number | null
+): "green" | "yellow" | "red" | "grey" {
+  // Grey when no expiry on file (not uploaded yet).
+  if (daysUntil == null) return "grey";
+  if (daysUntil < 60) return "red";
+  if (daysUntil <= 90) return "yellow";
+  return "green";
+}
+
 export function daysUntilExpiry(expiry: string | null): number | null {
   if (!expiry) return null;
   const today = new Date();

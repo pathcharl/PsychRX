@@ -32,6 +32,8 @@ function normalizeProvider(row: Record<string, unknown>): PortalProvider {
     stripe_connect_ready: Boolean(row.stripe_connect_ready),
     accepts_new_patients: row.accepts_new_patients !== false,
     caqh_last_attested: (row.caqh_last_attested as string) ?? null,
+    malpractice_carrier: (row.malpractice_carrier as string) ?? null,
+    malpractice_expiry: (row.malpractice_expiry as string) ?? null,
     pt_profile_url: (row.pt_profile_url as string) ?? null,
     license_state: (row.license_state as string) ?? null,
     provider_type: (row.provider_type as string) ?? null,
