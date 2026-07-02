@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "seed:admin": "tsx --env-file=.env.local scripts/seed-admin-demo.ts",
+    "reset:user": "tsx --env-file=.env.local scripts/reset-test-user.ts",
     "workers": "tsx --env-file=.env.local workers/index.ts",
     "worker:sms": "tsx workers/sms-router.ts",
     "worker:reminders": "tsx workers/reminder-worker.ts",

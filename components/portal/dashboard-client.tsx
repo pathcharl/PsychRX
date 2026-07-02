@@ -132,22 +132,38 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                           <Check className="size-4" /> Done
                         </span>
                       ) : session.session_modality === "video" ? (
-                        <a
-                          href={session.telehealth_link ?? "#"}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={buttonVariants({
-                            className: cn(
-                              "gap-2",
-                              joinable
-                                ? "bg-emerald-600 hover:bg-emerald-700"
-                                : "bg-teal hover:bg-teal-700"
-                            ),
-                          })}
-                        >
-                          <ExternalLink className="size-4" />
-                          Join Session
-                        </a>
+                        session.telehealth_link ? (
+                          <a
+                            href={session.telehealth_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={buttonVariants({
+                              className: cn(
+                                "gap-2",
+                                joinable
+                                  ? "bg-emerald-600 hover:bg-emerald-700"
+                                  : "bg-teal hover:bg-teal-700"
+                              ),
+                            })}
+                          >
+                            <ExternalLink className="size-4" />
+                            Join Session
+                          </a>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            className="gap-2"
+                            onClick={() => {
+                              toast.error(
+                                "No telehealth link set. Add your video room link in Settings."
+                              );
+                              router.push("/portal/settings");
+                            }}
+                          >
+                            <ExternalLink className="size-4" />
+                            Set up link
+                          </Button>
+                        )
                       ) : (
                         <a
                           href={`tel:${session.patient.phone ?? ""}`}

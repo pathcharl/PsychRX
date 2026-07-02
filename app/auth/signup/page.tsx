@@ -56,6 +56,17 @@ export default function SignupPage() {
         return;
       }
 
+      // With email confirmation on, Supabase returns success but no session and
+      // an empty `identities` array when the email is ALREADY registered. Detect
+      // that so users aren't sent to a dead verify page thinking it worked.
+      if (data.user && (data.user.identities?.length ?? 0) === 0) {
+        toast.error(
+          "This email is already registered. Please sign in or reset your password."
+        );
+        router.push(`/auth/login?email=${encodeURIComponent(email)}`);
+        return;
+      }
+
       // If email confirmation is disabled, a session is returned immediately.
       if (data.session) {
         router.push(dashboardPathForRole(getUserRole(data.user)));

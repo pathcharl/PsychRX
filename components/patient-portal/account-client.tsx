@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,7 @@ import type { PortalPatient } from "@/lib/patient-portal/types";
 import { format } from "date-fns";
 
 export function AccountPageClient({ patient }: { patient: PortalPatient }) {
+  const router = useRouter();
   const [email, setEmail] = useState(patient.email ?? "");
   const [phone, setPhone] = useState(patient.phone ?? "");
   const [address, setAddress] = useState(patient.address ?? "");
@@ -39,10 +41,27 @@ export function AccountPageClient({ patient }: { patient: PortalPatient }) {
   const [smsEnabled, setSmsEnabled] = useState(!patient.sms_opted_out);
   const [saving, setSaving] = useState(false);
 
-  async function handleSave(section: string) {
+  async function handleSave(
+    section: string,
+    payload: Record<string, unknown>
+  ) {
     setSaving(true);
     try {
+      const res = await fetch("/api/patient-portal/account", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Save failed");
+      }
       toast.success(`${section} updated.`);
+      router.refresh();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not save changes."
+      );
     } finally {
       setSaving(false);
     }
@@ -75,14 +94,14 @@ export function AccountPageClient({ patient }: { patient: PortalPatient }) {
               />
               <Button
                 variant="outline"
-                onClick={() => handleSave("Email")}
+                onClick={() => handleSave("Email", { email })}
                 disabled={saving}
               >
-                Verify
+                Save
               </Button>
             </div>
             <p className="text-xs text-navy/50">
-              We&apos;ll send a verification code via SMS
+              Used for appointment confirmations and portal notices
             </p>
           </div>
           <div className="space-y-2 sm:col-span-2">
@@ -96,10 +115,10 @@ export function AccountPageClient({ patient }: { patient: PortalPatient }) {
               />
               <Button
                 variant="outline"
-                onClick={() => handleSave("Phone")}
+                onClick={() => handleSave("Phone", { phone })}
                 disabled={saving}
               >
-                Verify
+                Save
               </Button>
             </div>
           </div>
@@ -144,7 +163,9 @@ export function AccountPageClient({ patient }: { patient: PortalPatient }) {
         </div>
         <Button
           className="mt-4 bg-teal hover:bg-teal-700"
-          onClick={() => handleSave("Address")}
+          onClick={() =>
+            handleSave("Address", { address, city, state, zip })
+          }
           disabled={saving}
         >
           Save address
@@ -183,7 +204,13 @@ export function AccountPageClient({ patient }: { patient: PortalPatient }) {
         </div>
         <Button
           className="mt-4 bg-teal hover:bg-teal-700"
-          onClick={() => handleSave("Emergency contact")}
+          onClick={() =>
+            handleSave("Emergency contact", {
+              emergency_contact_name: emergencyName,
+              emergency_contact_phone: emergencyPhone,
+              emergency_contact_relationship: emergencyRelationship,
+            })
+          }
           disabled={saving}
         >
           Save emergency contact
@@ -205,7 +232,9 @@ export function AccountPageClient({ patient }: { patient: PortalPatient }) {
         </div>
         <Button
           className="mt-4 bg-teal hover:bg-teal-700"
-          onClick={() => handleSave("Pharmacy")}
+          onClick={() =>
+            handleSave("Pharmacy", { preferred_pharmacy: pharmacy })
+          }
           disabled={saving}
         >
           Save pharmacy
@@ -254,7 +283,12 @@ export function AccountPageClient({ patient }: { patient: PortalPatient }) {
         </div>
         <Button
           className="mt-4 bg-teal hover:bg-teal-700"
-          onClick={() => handleSave("Preferences")}
+          onClick={() =>
+            handleSave("Preferences", {
+              session_modality_preference: modality,
+              sms_opted_out: !smsEnabled,
+            })
+          }
           disabled={saving}
         >
           Save preferences
