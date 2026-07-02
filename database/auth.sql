@@ -67,6 +67,19 @@ begin
     return new;
   end if;
 
+  -- Link to an existing patient row (created by a prior booking/intake with the
+  -- same email) instead of inserting a duplicate. Only claim rows not already
+  -- tied to another auth user.
+  if new.email is not null then
+    update public.patients
+    set user_id = new.id
+    where user_id is null
+      and lower(email) = lower(new.email);
+    if found then
+      return new;
+    end if;
+  end if;
+
   full_name := coalesce(new.raw_user_meta_data ->> 'full_name', '');
   first_name := nullif(split_part(full_name, ' ', 1), '');
   last_name := nullif(trim(substring(full_name from position(' ' in full_name))), '');
@@ -121,6 +134,19 @@ begin
     return new;
   end if;
 
+  -- Link to an existing provider row (e.g. one created by /providers/apply with
+  -- the same email) instead of inserting a duplicate. This also lets a provider
+  -- who applied first keep their pending application after they create a login.
+  if new.email is not null then
+    update public.providers
+    set user_id = new.id
+    where user_id is null
+      and lower(email) = lower(new.email);
+    if found then
+      return new;
+    end if;
+  end if;
+
   full_name := coalesce(new.raw_user_meta_data ->> 'full_name', '');
   first_name := nullif(split_part(full_name, ' ', 1), '');
   last_name := nullif(trim(substring(full_name from position(' ' in full_name))), '');
@@ -135,11 +161,15 @@ begin
   -- Dev placeholder: 10-digit unique NPI derived from auth user id (replace during onboarding).
   placeholder_npi := '9' || right(replace(new.id::text, '-', ''), 9);
 
+  -- New providers start as 'pending', NOT 'active'. Self-signup must not grant
+  -- an active provider account — providers are vetted via /providers/apply and
+  -- activated by an admin. (Previously this inserted 'active', which was both a
+  -- security hole and the reason re-applying returned 409.)
   insert into public.providers (
     user_id, first_name, last_name, email, npi, license_state, status
   )
   values (
-    new.id, first_name, last_name, new.email, placeholder_npi, 'FL', 'active'
+    new.id, first_name, last_name, new.email, placeholder_npi, 'FL', 'pending'
   )
   on conflict do nothing;
 
